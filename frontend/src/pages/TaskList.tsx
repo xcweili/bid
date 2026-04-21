@@ -11,13 +11,13 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
-  DashboardOutlined,
-  FileTextOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  FileTextOutlined
 } from '@ant-design/icons';
 import { taskService } from '../services/taskService';
 import { ruleService } from '../services/ruleService';
 import { colors } from '../styles/designTokens';
+import AppSidebar from '../components/AppSidebar';
 
 const { Title, Text } = Typography;
 
@@ -243,30 +243,10 @@ const TaskList: React.FC = () => {
   ];
 
   return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <DashboardOutlined /> 评审任务管理
-        </Title>
-        <Text type="secondary" style={{ marginLeft: 12 }}>
-          管理投标评审任务，查看评审进度和结果
-        </Text>
-      </div>
-
-      <Row gutter={16} style={{ marginBottom: 24 }}>
-        {stats.map((stat, index) => (
-          <Col span={8} key={index}>
-            <Card>
-              <Statistic
-                title={stat.title}
-                value={stat.value}
-                prefix={<span style={{ color: stat.color }}>{stat.icon}</span>}
-              />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
+    <AppSidebar 
+      pageTitle="评审任务管理" 
+      userRole="team_leader"
+    >
       <Card
         extra={
           <Button 
@@ -317,7 +297,7 @@ const TaskList: React.FC = () => {
           />
         </Space>
       </Modal>
-    </div>
+    </AppSidebar>
   );
 };
 

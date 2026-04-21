@@ -142,7 +142,7 @@ const TaskProgressView: React.FC = () => {
             progress.status === 'completed' ? '#52c41a' : 
             progress.status === 'processing' ? '#1890ff' : '#8c8c8c'
           }
-          format={() => `${progress.completed_items}/${progress.total_items} 评审项`}
+          format={() => `${progress.completed_companies}/${progress.total_companies} 家公司`}
         />
         
         <Divider />
@@ -215,6 +215,9 @@ const TaskProgressView: React.FC = () => {
                     format={() => `${record.completed_items}/${record.total_items}`}
                     strokeColor={getStatusColor(record.status)}
                   />
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    已评 {record.completed_items} / 共 {record.total_items} 个评审项
+                  </Text>
                 </Space>
               )
             },

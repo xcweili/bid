@@ -129,11 +129,23 @@ async def get_company_results(company_id: int):
 
 
 @router.get("/{company_id}/files")
-async def get_company_files(company_id: int):
-    """获取公司文件树"""
+async def get_company_files(company_id: int, criteria_id: int = None):
+    """获取公司文件树
+    
+    Args:
+        company_id: 公司 ID
+        criteria_id: 评审项 ID（可选，用于过滤文件）
+    """
     db = db_session()
     try:
-        company = db.query(CompanyBid).filter(CompanyBid.id == company_id).first()
+        # 优先查询新表 CompanyBidNew
+        from models.extended_models import CompanyBidNew
+        company = db.query(CompanyBidNew).filter(CompanyBidNew.id == company_id).first()
+        
+        # 如果新表中没有，尝试旧表
+        if not company:
+            company = db.query(CompanyBid).filter(CompanyBid.id == company_id).first()
+        
         if not company:
             raise HTTPException(status_code=404, detail="公司不存在")
 
@@ -141,6 +153,25 @@ async def get_company_files(company_id: int):
         folder_path = company.bid_folder_path
         if not folder_path:
             return {"files": []}
+        
+        # 修复路径分隔符问题（Windows 和 Linux 混用）
+        folder_path = folder_path.replace("\\", "/")
+        # 转换为绝对路径
+        from pathlib import Path
+        src_dir = Path(__file__).parent.parent  # /home/xcweili/.openclaw/workspace/bid/src
+        # 如果路径以 src/开头，去掉它，因为 src_dir 已经是 src 目录
+        if folder_path.startswith("src/"):
+            folder_path = folder_path[4:]  # 去掉 "src/"
+        folder_path = str(src_dir / folder_path)
+
+        # 如果指定了 criteria_id，获取评审项名称用于过滤
+        criteria_name = None
+        if criteria_id:
+            from models.extended_models import EvaluationCriteria
+            criteria = db.query(EvaluationCriteria).filter(EvaluationCriteria.id == criteria_id).first()
+            if criteria:
+                criteria_name = criteria.criteria_name
+                logger.info(f"按评审项过滤：{criteria_name}")
 
         # 构建文件树
         from pathlib import Path
@@ -149,6 +180,11 @@ async def get_company_files(company_id: int):
         def build_file_tree(folder: Path, parent_key: str = "") -> list:
             files = []
             try:
+                # 检查路径是否存在
+                if not folder.exists():
+                    logger.warning(f"文件夹不存在：{folder}")
+                    return []
+                
                 # 打印当前处理的文件夹
                 logger.info(f"构建文件树：处理文件夹 {folder}")
                 
@@ -167,14 +203,29 @@ async def get_company_files(company_id: int):
                         total_size = sum(
                             f.stat().st_size for f in item.rglob('*') if f.is_file()
                         ) if dir_files else 0
-                        files.append({
-                            "key": dir_key,
-                            "title": dir_name,
-                            "type": "folder",
-                            "size": total_size,
-                            "children": dir_files,
-                            "path": str(item)
-                        })
+                        
+                        # 如果指定了评审项，过滤文件夹（只保留匹配的评审项文件夹）
+                        if criteria_name:
+                            if criteria_name in dir_name:
+                                files.append({
+                                    "key": dir_key,
+                                    "title": dir_name,
+                                    "type": "folder",
+                                    "size": total_size,
+                                    "children": dir_files,
+                                    "path": str(item)
+                                })
+                            else:
+                                logger.info(f"跳过不匹配的文件夹：{dir_name}")
+                        else:
+                            files.append({
+                                "key": dir_key,
+                                "title": dir_name,
+                                "type": "folder",
+                                "size": total_size,
+                                "children": dir_files,
+                                "path": str(item)
+                            })
                     else:
                         file_name = item.name
                         file_key = f"{parent_key}/{file_name}" if parent_key else file_name
@@ -210,34 +261,86 @@ async def get_company_files(company_id: int):
                 logger.error(f"读取文件夹失败 {folder}: {e}", exc_info=True)
             return files
 
-        # 处理文件夹路径，转换为绝对路径
-        logger.info(f"原始文件夹路径: {folder_path}")
-        
-        # 检查是否是绝对路径
-        if not Path(folder_path).is_absolute():
-            # 如果是相对路径，基于src目录构建绝对路径
-            src_dir = Path(__file__).parent.parent
-            # 处理路径，确保正确拼接
-            if folder_path.startswith('src/'):
-                # 如果路径已经以src开头，去掉前缀后再拼接
-                folder_path = str(src_dir.joinpath(folder_path.replace('src/', '')))
-            else:
-                # 否则直接拼接
-                folder_path = str(src_dir.joinpath(folder_path))
-            logger.info(f"转换为绝对路径: {folder_path}")
-        
-        # 规范化路径，处理空格和特殊字符
-        folder = Path(folder_path).resolve()
-        logger.info(f"公司文件夹路径: {folder}, exists={folder.exists()}")
+        # 使用第一次处理后的 folder_path
+        folder = Path(folder_path)
+        logger.info(f"公司文件夹路径：{folder}, exists={folder.exists()}")
         
         if not folder.exists():
+            logger.warning(f"公司文件夹不存在：{folder}")
             return {"files": []}
         
         file_tree = build_file_tree(folder)
-        logger.info(f"构建文件树完成，文件数: {len(file_tree)}")
+        logger.info(f"构建文件树完成，文件数：{len(file_tree)}")
         return {"files": file_tree}
     finally:
         db.close()
+
+
+@router.get("/files/view")
+async def view_file(path: str = None, token: str = None):
+    """查看文件内容（返回文件流用于预览）"""
+    from urllib.parse import unquote
+    from fastapi.responses import FileResponse
+    from api.middleware import get_current_user_from_request
+    from fastapi import Request
+    logger.info(f"收到文件预览请求：path={path}")
+    
+    try:
+        if not path or path == "None" or path.strip() == "":
+            logger.error("文件路径参数为空")
+            raise HTTPException(status_code=400, detail="文件路径为空")
+        
+        # 解码 URL 编码的文件路径
+        decoded_path = unquote(path)
+        logger.info(f"解码后的文件路径：{decoded_path}")
+        
+        # 处理路径分隔符，确保跨平台兼容性
+        decoded_path = decoded_path.replace('\\', '/')
+        
+        # 检查文件是否存在
+        file_path = Path(decoded_path)
+        logger.debug(f"检查文件：{file_path}, exists={file_path.exists()}")
+        
+        if not file_path.exists():
+            logger.error(f"文件不存在：{decoded_path}")
+            raise HTTPException(status_code=404, detail=f"文件不存在：{decoded_path}")
+        
+        # 根据文件类型返回不同的响应
+        ext = file_path.suffix.lower()
+        
+        if ext == '.pdf':
+            return FileResponse(
+                path=str(file_path),
+                media_type='application/pdf',
+                filename=file_path.name
+            )
+        elif ext in ['.jpg', '.jpeg', '.png', '.gif']:
+            return FileResponse(
+                path=str(file_path),
+                media_type=f'image/{ext[1:]}',
+                filename=file_path.name
+            )
+        elif ext in ['.txt', '.md']:
+            # 文本文件直接返回内容
+            content = file_path.read_text(encoding='utf-8')
+            return {
+                "content": content,
+                "type": "text"
+            }
+        else:
+            # 其他文件类型返回下载
+            return FileResponse(
+                path=str(file_path),
+                media_type='application/octet-stream',
+                filename=file_path.name,
+                headers={'Content-Disposition': f'attachment; filename="{file_path.name}"'}
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"预览文件失败：{e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"预览失败：{str(e)}")
 
 
 @router.get("/files/content")
@@ -379,7 +482,19 @@ async def get_file_content(path: str = None):
                 logger.error(f"读取 PDF 文件失败：{e}")
                 content = f"[PDF 文件读取失败：{str(e)}]"
         elif ext in ['.md']:
-            content = file_path.read_text(encoding='utf-8')
+            try:
+                content = file_path.read_text(encoding='utf-8')
+                if not content.strip():
+                    content = "[MD 文件中没有内容]"
+            except UnicodeDecodeError:
+                # 尝试其他编码
+                try:
+                    content = file_path.read_text(encoding='gbk')
+                except:
+                    content = "[MD 文件读取失败 - 编码问题]"
+            except Exception as e:
+                logger.error(f"读取 MD 文件失败：{e}")
+                content = f"[MD 文件读取失败：{str(e)}]"
         elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
             content = f"[图片文件 - 需要 OCR 识别：{file_path.name}]"
         else:

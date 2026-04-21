@@ -1,0 +1,353 @@
+/* 批量分配面板容器 */
+.batch-assignment-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* 头部信息栏 */
+.assignment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.assignment-info {
+  display: flex;
+  align-items: center;
+}
+
+.assignment-progress {
+  width: 300px;
+}
+
+/* 三栏内容区 */
+.assignment-content {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 左侧成员面板 */
+.assignment-member-panel {
+  width: 320px;
+  min-width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.member-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.member-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #ffffff;
+  border: 2px solid #f0f0f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.member-card:hover {
+  border-color: #1890ff;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.member-card.selected {
+  border-color: #1890ff;
+  background: #e6f7ff;
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.25);
+}
+
+.member-card.completed {
+  border-color: #52c41a;
+  background: #f6ffed;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.member-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-stats {
+  display: flex;
+  align-items: center;
+}
+
+/* 中间资源面板 */
+.assignment-resource-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.resource-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.resource-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #f5f5f5;
+  transition: background 0.2s ease;
+}
+
+.resource-item:hover {
+  background: #fafafa;
+}
+
+.resource-item .ant-checkbox-wrapper {
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.resource-item .ant-checkbox-wrapper span {
+  flex: 1;
+}
+
+/* 右侧预览面板 */
+.assignment-preview-panel {
+  width: 320px;
+  min-width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.assignment-preview-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* 底部操作栏 */
+.assignment-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #ffffff;
+  border-radius: 12px;
+  margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* 自定义滚动条 */
+.member-list::-webkit-scrollbar,
+.resource-list::-webkit-scrollbar,
+.assignment-preview-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.member-list::-webkit-scrollbar-thumb,
+.resource-list::-webkit-scrollbar-thumb,
+.assignment-preview-list::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.member-list::-webkit-scrollbar-thumb:hover,
+.resource-list::-webkit-scrollbar-thumb:hover,
+.assignment-preview-list::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+.member-list::-webkit-scrollbar-track,
+.resource-list::-webkit-scrollbar-track,
+.assignment-preview-list::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 3px;
+}
+
+/* 响应式适配 */
+@media (max-width: 1400px) {
+  .assignment-member-panel {
+    width: 280px;
+    min-width: 260px;
+  }
+
+  .assignment-preview-panel {
+    width: 280px;
+    min-width: 260px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .assignment-content {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .assignment-member-panel,
+  .assignment-resource-panel,
+  .assignment-preview-panel {
+    width: 100%;
+    min-width: 0;
+    max-height: 400px;
+  }
+
+  .assignment-footer {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .assignment-footer > :first-child {
+    order: 2;
+  }
+
+  .assignment-footer > :last-child {
+    order: 1;
+  }
+}
+
+/* 卡片头部样式优化 */
+.assignment-member-panel .ant-card-head,
+.assignment-resource-panel .ant-card-head,
+.assignment-preview-panel .ant-card-head {
+  padding: 12px 16px;
+  min-height: 48px;
+}
+
+.assignment-member-panel .ant-card-head-title,
+.assignment-resource-panel .ant-card-head-title,
+.assignment-preview-panel .ant-card-head-title {
+  font-size: 15px;
+}
+
+.assignment-member-panel .ant-card-body,
+.assignment-resource-panel .ant-card-body,
+.assignment-preview-panel .ant-card-body {
+  padding: 8px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 标签样式 */
+.assignment-member-panel .ant-tag,
+.assignment-resource-panel .ant-tag,
+.assignment-preview-panel .ant-tag {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* 空状态样式 */
+.assignment-member-panel .ant-empty,
+.assignment-resource-panel .ant-empty,
+.assignment-preview-panel .ant-empty {
+  margin: 20px 0;
+}
+
+.assignment-member-panel .ant-empty-description,
+.assignment-resource-panel .ant-empty-description,
+.assignment-preview-panel .ant-empty-description {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+/* 进度条样式 */
+.assignment-progress .ant-progress {
+  margin: 0;
+}
+
+.assignment-progress .ant-progress-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 按钮样式 */
+.assignment-footer .ant-btn {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.assignment-footer .ant-btn-primary {
+  padding: 8px 24px;
+  font-size: 15px;
+}
+
+/* 选中状态动画 */
+@keyframes memberCardSelected {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.member-card.selected {
+  animation: memberCardSelected 0.3s ease;
+}
+
+/* 完成状态动画 */
+@keyframes memberCardCompleted {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.member-card.completed {
+  animation: memberCardCompleted 0.4s ease;
+}
+
+/* 资源项选中效果 */
+.resource-item:has(.ant-checkbox-checked) {
+  background: #f0f5ff;
+  border-left: 3px solid #1890ff;
+  padding-left: 13px;
+}
+
+/* 工具提示优化 */
+.ant-tooltip {
+  font-size: 12px;
+  max-width: 200px;
+}
+
+/* 分割线样式 */
+.ant-divider {
+  margin: 8px 0;
+  border-color: #f0f0f0;
+}

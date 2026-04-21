@@ -1,0 +1,182 @@
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard-sider {
+  background: #fff;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  padding: 0 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sidebar-logo {
+  font-size: 24px;
+  color: #1890ff;
+  margin-right: 8px;
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: 18px;
+  color: #1a1a2e;
+}
+
+.sidebar-menu {
+  margin-top: 16px;
+}
+
+/* 优化菜单项样式 */
+.sidebar-menu .ant-menu-item {
+  margin: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.sidebar-menu .ant-menu-item:hover {
+  background: #f5f5f5 !important;
+}
+
+.sidebar-menu .ant-menu-item-selected {
+  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%) !important;
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.sidebar-menu .ant-menu-item-selected::after {
+  display: none;
+}
+
+.sidebar-menu .ant-menu-item .anticon {
+  font-size: 16px;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-menu .ant-menu-item:hover .anticon {
+  transform: scale(1.1);
+}
+
+.sidebar-footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  padding: 16px;
+  text-align: center;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.dashboard-header {
+  background: #fff;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 99;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-title {
+  margin: 0;
+  font-size: 20px;
+  color: #1a1a2e;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  pointer-events: auto !important;  /* 确保可以点击 */
+  user-select: none;  /* 防止文本选择 */
+}
+
+.user-profile:hover {
+  background: #f5f5f5;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.user-profile:active {
+  transform: translateY(0);
+}
+
+.user-profile .ant-avatar {
+  margin-right: 8px;
+  border: 2px solid #e6f7ff;
+}
+
+.dashboard-content {
+  margin-left: 220px;
+  padding: 0;
+  background: #f0f2f5;
+  min-height: calc(100vh - 64px);
+  overflow: auto;  /* 确保内容区域可以滚动，但不会触发 body 滚动 */
+}
+
+/* 防止 body 出现双滚动条 */
+body {
+  overflow: hidden !important;
+}
+
+/* 确保 Dropdown 正常显示 */
+.ant-dropdown {
+  pointer-events: auto !important;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .dashboard-sider {
+    width: 64px !important;
+  }
+
+  .sidebar-title,
+  .sidebar-footer {
+    display: none;
+  }
+
+  .sidebar-menu .ant-menu-item-title {
+    display: none;
+  }
+
+  .dashboard-content {
+    margin-left: 64px;
+  }
+
+  .header-title {
+    font-size: 16px;
+  }
+}

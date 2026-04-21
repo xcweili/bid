@@ -1,0 +1,602 @@
+/* ==================== 容器基础样式 ==================== */
+.task-detail-container {
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
+  min-height: calc(100vh - 100px);
+}
+
+/* ==================== 返回按钮 ==================== */
+.back-btn {
+  margin-bottom: 20px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.back-btn:hover {
+  transform: translateX(-4px);
+}
+
+/* ==================== 加载状态 ==================== */
+.detail-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.loading-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.spinner-icon {
+  font-size: 48px;
+  color: #1890ff;
+}
+
+/* ==================== 任务信息卡片 ==================== */
+.task-info-card {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06) !important;
+  margin-bottom: 24px;
+}
+
+.task-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.task-info-left {
+  flex: 1;
+  min-width: 200px;
+}
+
+.task-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f1f1f;
+  letter-spacing: -0.5px;
+}
+
+.task-info-right {
+  text-align: right;
+}
+
+.task-info-actions {
+  margin-top: 8px;
+}
+
+.task-info-divider {
+  margin: 20px 0 !important;
+}
+
+/* ==================== 步骤条样式 ==================== */
+.task-steps {
+  margin: 20px 0 !important;
+}
+
+.task-steps .ant-steps-item-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.task-steps .ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: #1890ff;
+}
+
+.task-steps .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-content > .ant-steps-item-title {
+  color: #52c41a;
+}
+
+/* ==================== 步骤导航 ==================== */
+.step-navigation {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 12px;
+}
+
+/* ==================== 步骤内容卡片 ==================== */
+.step-content-card {
+  border-radius: 12px !important;
+  border: 1px solid #f0f0f0 !important;
+  background: #fafafa;
+}
+
+/* ==================== 步骤 0: 任务创建 ==================== */
+.step-info-card {
+  background: linear-gradient(135deg, #f0f7ff 0%, #fafafa 100%);
+  border: 1px solid #e6f7ff !important;
+}
+
+.step-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.step-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  font-size: 28px;
+}
+
+.step-icon-0 {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.step-info {
+  flex: 1;
+}
+
+.step-title {
+  margin: 0 0 4px 0 !important;
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+}
+
+/* ==================== 步骤 1: 上传标书 ==================== */
+.upload-card {
+  background: linear-gradient(135deg, #fff5f5 0%, #fafafa 100%);
+  border: 2px dashed #ffccc7 !important;
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  gap: 16px;
+}
+
+.upload-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #ff787520 0%, #ff4d4f20 100%);
+  border-radius: 50%;
+  color: #ff4d4f;
+  font-size: 36px;
+}
+
+.upload-title {
+  margin: 0 !important;
+  font-size: 20px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.upload-desc {
+  font-size: 14px;
+}
+
+.upload-btn {
+  margin-top: 16px;
+  padding: 12px 32px;
+  font-size: 16px;
+  background: linear-gradient(135deg, #ff7875 0%, #ff4d4f 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+  transition: all 0.3s ease;
+}
+
+.upload-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 77, 79, 0.4);
+}
+
+/* 上传成功样式 */
+.upload-success-card {
+  background: linear-gradient(135deg, #f6ffed 0%, #fafafa 100%);
+  border: 1px solid #b7eb8f !important;
+}
+
+.upload-success-content {
+  padding: 8px 0;
+}
+
+.file-status-alert {
+  margin-bottom: 24px;
+  border-radius: 8px;
+}
+
+.upload-actions {
+  margin: 24px 0;
+}
+
+.ocr-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+}
+
+.ocr-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(82, 196, 26, 0.4);
+}
+
+.upload-tip {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fffbe6;
+  border-radius: 8px;
+  border: 1px solid #ffe58f;
+}
+
+/* ==================== 步骤 2: 配置规则 ==================== */
+.rules-content {
+  padding: 8px 0;
+}
+
+.rules-alert {
+  margin-bottom: 24px;
+  border-radius: 8px;
+}
+
+.no-rules-card {
+  min-height: 200px;
+}
+
+.rules-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.rule-card {
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: 2px solid transparent !important;
+}
+
+.rule-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.rule-card-selected {
+  border-color: #1890ff !important;
+  background: #e6f7ff;
+}
+
+.rule-card-no-files {
+  opacity: 0.7;
+}
+
+.rule-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rule-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rule-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  color: #262626;
+}
+
+.rule-icon {
+  color: #1890ff;
+}
+
+.rule-card-body {
+  padding: 0 4px;
+}
+
+.rule-content-text {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rule-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.rules-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.save-rules-btn {
+  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.save-rules-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(24, 144, 255, 0.4);
+}
+
+.selected-rules {
+  margin-top: 24px;
+}
+
+.selected-rules .ant-tag {
+  font-weight: 500;
+}
+
+/* ==================== 步骤 3: 执行评审 ==================== */
+.execute-content {
+  padding: 8px 0;
+}
+
+.execute-alert {
+  margin-bottom: 24px;
+  border-radius: 8px;
+}
+
+.execute-actions {
+  display: flex;
+  justify-content: center;
+  margin: 32px 0;
+}
+
+.start-task-btn {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
+  padding: 12px 48px;
+  font-size: 16px;
+}
+
+.start-task-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(82, 196, 26, 0.4);
+}
+
+.rules-summary-card {
+  margin-top: 24px;
+  background: #f6ffed;
+  border: 1px solid #b7eb8f !important;
+}
+
+/* ==================== 步骤 4: 已完成 ==================== */
+.completed-card {
+  background: linear-gradient(135deg, #f6ffed 0%, #fafafa 100%);
+  border: 1px solid #b7eb8f !important;
+}
+
+.completed-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  gap: 16px;
+}
+
+.completed-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  border-radius: 50%;
+  color: white;
+  font-size: 40px;
+}
+
+/* ==================== 公司列表卡片 ==================== */
+.companies-card {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06) !important;
+}
+
+.company-search {
+  border-radius: 8px;
+}
+
+.companies-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  font-weight: 600;
+  color: #262626;
+  padding: 12px 16px;
+  border-bottom: 2px solid #e8e8e8;
+  font-size: 13px;
+}
+
+.companies-table .ant-table-tbody > tr > td {
+  padding: 10px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+
+.companies-table .ant-table-tbody > tr:hover > td {
+  background: linear-gradient(90deg, #f0f7ff 0%, #fafafa 100%);
+}
+
+.company-name {
+  font-weight: 500;
+  color: #262626;
+  font-size: 13px;
+}
+
+.company-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ==================== Assignment 详情页 ==================== */
+.assignment-detail {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.assignment-header-card {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06) !important;
+  margin-bottom: 24px;
+}
+
+.assignment-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.assignment-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  font-size: 28px;
+  color: white;
+}
+
+.icon-criteria {
+  background: linear-gradient(135deg, #fa8c16 0%, #ffc53d 100%);
+}
+
+.icon-company {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+}
+
+.assignment-info {
+  flex: 1;
+}
+
+/* ==================== 文件树抽屉 ==================== */
+.file-tree-drawer .ant-drawer-content {
+  border-radius: 16px 0 0 16px;
+}
+
+.file-tree-drawer .ant-drawer-header {
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.file-tree-drawer .ant-drawer-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 1200px) {
+  .task-detail-container {
+    padding: 20px;
+  }
+  
+  .task-name {
+    font-size: 20px;
+  }
+  
+  .rules-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 992px) {
+  .task-detail-container {
+    padding: 16px;
+  }
+  
+  .task-info-header {
+    flex-direction: column;
+  }
+  
+  .task-info-right {
+    text-align: left;
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .step-content {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .upload-actions {
+    flex-direction: column;
+  }
+  
+  .execute-actions {
+    flex-direction: column;
+  }
+  
+  .step-navigation {
+    justify-content: center;
+  }
+}
+
+/* ==================== 动画效果 ==================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.task-info-card,
+.companies-card,
+.step-content-card {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+/* ==================== 滚动条样式 ==================== */
+.ant-table::-webkit-scrollbar {
+  height: 8px;
+}
+
+.ant-table::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+
+.ant-table::-webkit-scrollbar-thumb {
+  background: #bfbfbf;
+  border-radius: 4px;
+}
+
+.ant-table::-webkit-scrollbar-thumb:hover {
+  background: #8c8c8c;
+}

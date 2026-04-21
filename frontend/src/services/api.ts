@@ -1,39 +1,40 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
-
-const api = axios.create({
-  baseURL: API_BASE,
-  timeout: 30000
+// 创建 axios 实例
+const apiClient = axios.create({
+  baseURL: 'http://localhost:8000',
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
-// 添加请求和响应拦截器
-api.interceptors.request.use(
-  (config) => {
-    // 只保留重要的请求日志
-    if (config.url?.includes('/tasks/') && (config.method === 'post' || config.method === 'put')) {
-      console.log('🔄 API 请求:', config.method?.toUpperCase(), config.url);
+// 请求拦截器 - 添加 token
+apiClient.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    console.error('❌ API 请求错误:', error);
+  error => {
     return Promise.reject(error);
   }
 );
 
-api.interceptors.response.use(
-  (response) => {
-    // 只保留重要的响应日志
-    if (response.config.url?.includes('/tasks/') && (response.config.method === 'post' || response.config.method === 'put')) {
-      console.log('✅ API 响应:', response.config.url, response.status);
+// 响应拦截器 - 处理错误
+apiClient.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // 未授权，跳转到登录页
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
     }
-    return response;
-  },
-  (error) => {
-    console.error('❌ API 响应错误:', error.config?.url, error.response?.status, error.response?.data);
     return Promise.reject(error);
   }
 );
 
-export default api;
+export default apiClient;

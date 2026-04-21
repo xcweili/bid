@@ -3,21 +3,28 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Card, Button, Typography, Upload, message, Table, Tag, 
   Descriptions, Progress, Space, Modal, Steps, Divider, 
-  Statistic, Checkbox, Alert, List, Drawer, Input
+  Statistic, Checkbox, Alert, List, Drawer, Input, Empty,
+  Row, Col
 } from 'antd';
 import { 
   UploadOutlined, ArrowLeftOutlined,
   CheckCircleOutlined, ClockCircleOutlined,
   FolderOutlined, RobotOutlined, RightOutlined, LeftOutlined,
   DeleteOutlined, ReloadOutlined, StopOutlined, EyeOutlined,
-  SearchOutlined
+  SearchOutlined, FileTextOutlined, TeamOutlined,
+  ThunderboltOutlined, DashboardOutlined, PlayCircleOutlined, BarChartOutlined
 } from '@ant-design/icons';
 import { taskService } from '../services/taskService';
 import { ruleService } from '../services/ruleService';
 import FileTreeExplorer from '../components/FileTreeExplorer';
 import FileSelector from '../components/FileSelector';
+import ExecutionViewPanel from '../components/ExecutionViewPanel';
+import apiClient from '../services/api';
+import './TaskDetail.css';
 
-const { Title, Text } = Typography;
+const { Title, Text, Link } = Typography;
+
+// ==================== 类型定义 ====================
 
 interface Company {
   id: number;
@@ -54,9 +61,26 @@ interface Task {
   ocr_status?: 'idle' | 'processing';
 }
 
+// Assignment 相关类型
+interface Assignment {
+  assignment_id: number;
+  assignment_type: 'by_criteria' | 'by_company' | 'by_package';
+  dispatch_mode?: 'by_criteria' | 'by_company';
+  evaluator_id: number;
+  evaluator_name: string;
+  package_id?: number;
+  status: string;
+  progress: number;
+}
+
+// ==================== 组件实现 ====================
+
 const TaskDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // 任务相关状态
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -72,6 +96,7 @@ const TaskDetail: React.FC = () => {
   const [companySearchText, setCompanySearchText] = useState('');
   const [companyPagination, setCompanyPagination] = useState({ current: 1, pageSize: 10 });
 
+  // 步骤相关状态
   const steps = [
     { title: '新建任务', description: '任务已创建' },
     { title: '上传标书', description: '上传 ZIP 格式的标书文件' },
@@ -80,23 +105,19 @@ const TaskDetail: React.FC = () => {
     { title: '查看结果', description: '查看评审结果' },
   ];
 
-  const getCurrentStep = () => {
-    if (!task) return 0;
-    if (task.status === 'completed') return 4;
-    if (task.status === 'processing') return 3;
-    if (task.total_companies > 0) {
-      if (task.rule_ids && task.rule_ids.length > 0) return 2;
-      return 1;
-    }
-    return 0;
-  };
-
   const [currentStep, setCurrentStep] = useState(0);
+
+  // Assignment 相关状态
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+
+  // ==================== 生命周期 ====================
 
   useEffect(() => {
     if (id) {
       fetchTask();
       fetchRuleTemplates();
+      fetchAssignment();
     }
   }, [id]);
 
@@ -109,11 +130,10 @@ const TaskDetail: React.FC = () => {
     }
   }, [task]);
 
-  // 自动刷新任务状态，当任务处于processing状态时
+  // 自动刷新任务状态
   useEffect(() => {
     let interval: any;
     if (task && task.status === 'processing') {
-      // 每1分钟刷新一次任务状态
       interval = setInterval(() => {
         fetchTask();
       }, 60000);
@@ -125,11 +145,10 @@ const TaskDetail: React.FC = () => {
     };
   }, [task]);
 
-  // 自动刷新OCR状态，当文档解析中时
+  // 自动刷新 OCR 状态
   useEffect(() => {
     let interval: any;
     if (task && task.ocr_status === 'processing') {
-      // 每1分钟刷新一次OCR状态
       interval = setInterval(() => {
         fetchTask();
       }, 60000);
@@ -140,6 +159,8 @@ const TaskDetail: React.FC = () => {
       }
     };
   }, [task]);
+
+  // ==================== 数据加载 ====================
 
   const fetchTask = async () => {
     setLoading(true);
@@ -159,10 +180,8 @@ const TaskDetail: React.FC = () => {
     try {
       const data = await ruleService.getRules();
       setRuleTemplates(data);
-      // 构建规则详情对象，包含绑定的文件列表
       const details: Record<number, { source_files: string[] }> = {};
       data.forEach((rule: RuleTemplate) => {
-        // 从规则配置中提取source_files
         let sourceFiles: string[] = [];
         if (rule.config?.items && rule.config.items.length > 0) {
           sourceFiles = rule.config.items[0].source_files || [];
@@ -179,12 +198,49 @@ const TaskDetail: React.FC = () => {
     }
   };
 
+  const fetchAssignment = async () => {
+    setAssignmentLoading(true);
+    try {
+      const assignmentId = location.state?.assignmentId || parseInt(id!);
+      const response = await apiClient.get(`/api/assignments/${assignmentId}`);
+      const assignmentData = response.data;
+      
+      setAssignment({
+        assignment_id: assignmentData.assignment_id,
+        assignment_type: assignmentData.assignment_type,
+        dispatch_mode: assignmentData.dispatch_mode,
+        evaluator_id: assignmentData.evaluator_id,
+        evaluator_name: assignmentData.evaluator_name,
+        package_id: assignmentData.package_id,
+        status: assignmentData.status,
+        progress: assignmentData.progress
+      });
+    } catch (error) {
+      console.log('未找到 assignment 信息，使用传统模式');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  // ==================== 步骤计算 ====================
+
+  const getCurrentStep = () => {
+    if (!task) return 0;
+    if (task.status === 'completed') return 4;
+    if (task.status === 'processing') return 3;
+    if (task.total_companies > 0) {
+      if (task.rule_ids && task.rule_ids.length > 0) return 2;
+      return 1;
+    }
+    return 0;
+  };
+
+  // ==================== 文件处理 ====================
+
   const handleUpload = async (file: File) => {
-    console.log('开始上传文件...');
     setUploading(true);
     try {
       const result = await taskService.uploadBidZip(parseInt(id!), file);
-      console.log('上传成功，返回结果:', result);
       message.success('上传成功，已识别公司文件并开始解析');
       await fetchTask();
     } catch (error) {
@@ -222,7 +278,6 @@ const TaskDetail: React.FC = () => {
 
   const handleOcrDocuments = async () => {
     if (!task) return;
-    // 打开文件选择器
     setShowFileSelector(true);
   };
 
@@ -238,7 +293,6 @@ const TaskDetail: React.FC = () => {
         checkCount++;
         try {
           const data = await taskService.getTask(parseInt(id!));
-          console.log('OCR 状态轮询', data.ocr_status);
           if (data.ocr_status !== 'processing' || checkCount >= 60) {
             clearInterval(interval);
             await fetchTask();
@@ -272,17 +326,17 @@ const TaskDetail: React.FC = () => {
     });
   };
 
+  // ==================== 规则管理 ====================
+
   const handleSaveRules = async () => {
     if (!task) return;
     
-    // 检查是否所有选择的规则都已绑定文件
     const rulesWithoutFiles = selectedRuleIds.filter(ruleId => {
       const rule = ruleDetails[ruleId];
       return !rule || !rule.source_files || rule.source_files.length === 0;
     });
     
     if (rulesWithoutFiles.length > 0) {
-      // 找出未绑定文件的规则名称
       const ruleNames = rulesWithoutFiles
         .map(ruleId => ruleTemplates.find(r => r.id === ruleId)?.rule_name)
         .filter(Boolean);
@@ -297,7 +351,7 @@ const TaskDetail: React.FC = () => {
                 <li key={index}>{name}</li>
               ))}
             </ul>
-            <p>未绑定文件的规则将无法进行AI评审。</p>
+            <p>未绑定文件的规则将无法进行 AI 评审。</p>
             <p>是否前往规则配置页面绑定文件？</p>
           </div>
         ),
@@ -307,12 +361,10 @@ const TaskDetail: React.FC = () => {
           navigate('/rules');
         },
         onCancel: async () => {
-          // 继续保存，即使有些规则未绑定文件
           saveRules();
         }
       });
     } else {
-      // 所有规则都已绑定文件，直接保存
       saveRules();
     }
   };
@@ -324,13 +376,15 @@ const TaskDetail: React.FC = () => {
       await taskService.updateTaskRules(task.id, selectedRuleIds);
       message.success('规则保存成功');
       await fetchTask();
-      await fetchRuleTemplates(); // 重新获取规则模板，更新绑定文件状态
+      await fetchRuleTemplates();
     } catch (error) {
       message.error('保存规则失败');
     } finally {
       setSavingRules(false);
     }
   };
+
+  // ==================== 任务执行 ====================
 
   const handleStartTask = async () => {
     if (!task) return;
@@ -375,10 +429,12 @@ const TaskDetail: React.FC = () => {
     });
   };
 
+  // ==================== 状态渲染辅助函数 ====================
+
   const getStatusConfig = (status: string) => {
     const configs: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
       pending: { color: 'default', text: '待处理', icon: <ClockCircleOutlined /> },
-      processing: { color: 'processing', text: '评审中', icon: <RobotOutlined /> },
+      processing: { color: 'orange', text: '评审中', icon: <RobotOutlined /> },
       completed: { color: 'success', text: '已完成', icon: <CheckCircleOutlined /> },
       failed: { color: 'error', text: '失败', icon: <DeleteOutlined /> },
     };
@@ -392,160 +448,182 @@ const TaskDetail: React.FC = () => {
   };
 
   const handleNextStep = () => {
-    console.log('=== handleNextStep 被调用 ===');
-    console.log('currentStep:', currentStep);
-    console.log('task?.total_companies:', task?.total_companies);
-    console.log('task?.rule_ids:', task?.rule_ids);
-    console.log('task?.status:', task?.status);
-    
     if (currentStep < steps.length - 1) {
       if (currentStep === 1 && task?.total_companies === 0) {
-        console.log('触发提示：请先上传标书文件');
         message.warning('请先上传标书文件');
         return;
       }
       if (currentStep === 2 && task?.rule_ids && task.rule_ids.length === 0) {
-        console.log('触发提示：请至少选择一个规则模板');
         message.warning('请至少选择一个规则模板');
         return;
       }
       if (currentStep === 3 && task?.status !== 'completed') {
-        console.log('触发提示：评审未完成，请等待完成');
         message.warning('评审未完成，请等待完成');
         return;
       }
-      console.log('设置 currentStep =', currentStep + 1);
       setCurrentStep(currentStep + 1);
     }
   };
 
-  if (!task) return <div style={{ padding: 40, textAlign: 'center' }}>加载中...</div>;
-
-  const status = getStatusConfig(task.status);
-
-  // 计算过滤后的公司数据
-  const filteredCompanies = task.companies ? task.companies.filter(company => 
-    company.company_name.toLowerCase().includes(companySearchText.toLowerCase())
-  ) : [];
+  // ==================== 步骤内容渲染 ====================
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 0:
         return (
-          <Alert
-            message="任务已创建"
-            description="任务基本信息已保存，请继续下一步操作"
-            type="info"
-            showIcon
-          />
+          <Card className="step-info-card">
+            <div className="step-content">
+              <div className="step-icon-wrapper step-icon-0">
+                <FileTextOutlined />
+              </div>
+              <div className="step-info">
+                <Title level={5} className="step-title">任务已创建</Title>
+                <Text type="secondary">任务基本信息已保存，请继续下一步操作</Text>
+              </div>
+            </div>
+          </Card>
         );
 
       case 1:
         return (
-          <div>
+          <div className="step-content-wrapper">
             {task.total_companies === 0 ? (
-              <Space direction="vertical" size="middle">
-                <Alert
-                  message="请上传标书文件"
-                  description="支持 ZIP 格式的标书文件，系统将自动识别其中的公司文件夹"
-                  type="info"
-                  showIcon
-                />
-                <Upload
-                  accept=".zip"
-                  showUploadList={false}
-                  beforeUpload={handleUpload}
-                >
-                  <Button 
-                    type="primary" 
-                    icon={<UploadOutlined />} 
-                    loading={uploading}
-                    size="large"
+              <Card className="upload-card">
+                <div className="upload-content">
+                  <div className="upload-icon-wrapper">
+                    <UploadOutlined />
+                  </div>
+                  <Title level={5} className="upload-title">请上传标书文件</Title>
+                  <Text type="secondary" className="upload-desc">
+                    支持 ZIP 格式的标书文件，系统将自动识别其中的公司文件夹
+                  </Text>
+                  <Upload
+                    accept=".zip"
+                    showUploadList={false}
+                    beforeUpload={handleUpload}
                   >
-                    上传标书 ZIP
-                  </Button>
-                </Upload>
-              </Space>
+                    <Button 
+                      type="primary" 
+                      icon={<UploadOutlined />} 
+                      loading={uploading}
+                      size="large"
+                      className="upload-btn"
+                    >
+                      上传标书 ZIP
+                    </Button>
+                  </Upload>
+                </div>
+              </Card>
             ) : (
-              <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                <Alert
-                  message="已上传标书"
-                  description={`已识别 ${task.total_companies} 家公司，文件解析状态：${task.ocr_status === 'processing' ? '解析中' : task.ocr_status === 'idle' ? '已完成' : '待处理'}`}
-                  type={task.ocr_status === 'processing' ? 'info' : 'success'}
-                  showIcon
-                />
-                
-                <Space wrap>
-                  {task?.ocr_status === 'processing' ? (
-                    <>
-                      <Button 
-                        danger
-                        icon={<StopOutlined />}
-                        onClick={handleStopOcr}
-                      >
-                        停止解析
-                      </Button>
-                      <Text type="secondary">文件正在解析中，请稍候...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Button 
-                        icon={<ReloadOutlined />}
-                        onClick={handleOcrDocuments}
-                        type="primary"
-                      >
-                        {task.ocr_status === 'idle' ? '重新解析文档' : '开始解析文档'}
-                      </Button>
-                      <Button 
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={handleReUpload}
-                      >
-                        删除原文档
-                      </Button>
-                    </>
-                  )}
-                </Space>
-                
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  💡 点击"开始解析文档"可将 .doc/.docx/.pdf 文件转换为文本格式，便于 AI 评审
-                </Text>
-              </Space>
+              <Card className="upload-success-card">
+                <div className="upload-success-content">
+                  <Alert
+                    message={
+                      <Space>
+                        <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                        <span>已上传标书</span>
+                      </Space>
+                    }
+                    description={
+                      <div>
+                        <div>已识别 <strong>{task.total_companies}</strong> 家公司</div>
+                        <div style={{ marginTop: 4 }}>
+                          文件解析状态：{task.ocr_status === 'processing' ? '解析中' : task.ocr_status === 'idle' ? '已完成' : '待处理'}
+                        </div>
+                      </div>
+                    }
+                    type={task.ocr_status === 'processing' ? 'info' : 'success'}
+                    showIcon
+                    className="file-status-alert"
+                  />
+                  
+                  <div className="upload-actions">
+                    {task?.ocr_status === 'processing' ? (
+                      <Space>
+                        <Button 
+                          danger
+                          icon={<StopOutlined />}
+                          onClick={handleStopOcr}
+                          size="large"
+                        >
+                          停止解析
+                        </Button>
+                        <Text type="secondary">文件正在解析中，请稍候...</Text>
+                      </Space>
+                    ) : (
+                      <Space wrap>
+                        <Button 
+                          icon={<ReloadOutlined />}
+                          onClick={handleOcrDocuments}
+                          type="primary"
+                          size="large"
+                          className="ocr-btn"
+                        >
+                          {task.ocr_status === 'idle' ? '重新解析文档' : '开始解析文档'}
+                        </Button>
+                        <Button 
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={handleReUpload}
+                          size="large"
+                        >
+                          删除原文档
+                        </Button>
+                      </Space>
+                    )}
+                  </div>
+                  
+                  <div className="upload-tip">
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      <ThunderboltOutlined /> 点击"开始解析文档"可将 .doc/.docx/.pdf 文件转换为文本格式，便于 AI 评审
+                    </Text>
+                  </div>
+                </div>
+              </Card>
             )}
           </div>
         );
 
       case 2:
         return (
-          <div>
+          <div className="rules-content">
             <Alert
-              message="选择评审规则模板"
+              message={
+                <Space>
+                  <FileTextOutlined />
+                  <span>选择评审规则模板</span>
+                </Space>
+              }
               description="从已配置的规则模板中选择需要应用于本任务的规则"
               type="info"
               showIcon
-              style={{ marginBottom: 16 }}
+              className="rules-alert"
             />
             
             {ruleTemplates.length === 0 ? (
-              <Alert
-                message="暂无规则模板"
-                description="请先在「规则配置」页面创建规则模板"
-                type="warning"
-                showIcon
-                action={
-                  <Button size="small" type="primary" onClick={() => navigate('/rules')}>
-                    配置
-                  </Button>
-                }
-              />
+              <Card className="no-rules-card">
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <div>
+                      <Text type="secondary">暂无规则模板</Text>
+                      <br />
+                      <Link onClick={() => navigate('/rules')} style={{ marginTop: 8, display: 'inline-block' }}>
+                        前往规则配置页面创建
+                      </Link>
+                    </div>
+                  }
+                />
+              </Card>
             ) : (
-              <List
-                dataSource={ruleTemplates}
-                renderItem={(item) => {
+              <div className="rules-list">
+                {ruleTemplates.map((item) => {
                   const hasFiles = ruleDetails[item.id]?.source_files?.length > 0;
                   const isSelected = selectedRuleIds.includes(item.id);
                   return (
-                    <List.Item
+                    <Card
+                      key={item.id}
+                      className={`rule-card ${isSelected ? 'rule-card-selected' : ''} ${!hasFiles ? 'rule-card-no-files' : ''}`}
                       onClick={() => {
                         if (isSelected) {
                           setSelectedRuleIds(selectedRuleIds.filter(id => id !== item.id));
@@ -553,74 +631,85 @@ const TaskDetail: React.FC = () => {
                           setSelectedRuleIds([...selectedRuleIds, item.id]);
                         }
                       }}
-                      style={{ cursor: 'pointer' }}
-                      actions={[
-                        <Checkbox
-                          checked={isSelected}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            if (e.target.checked) {
-                              setSelectedRuleIds([...selectedRuleIds, item.id]);
-                            } else {
-                              setSelectedRuleIds(selectedRuleIds.filter(id => id !== item.id));
-                            }
-                          }}
-                          disabled={!hasFiles}
-                        >
-                          {isSelected ? '已选择' : '选择'}
-                        </Checkbox>
-                      ]}
+                      hoverable={!hasFiles}
                     >
-                      <List.Item.Meta
-                        title={
+                      <div className="rule-card-content">
+                        <div className="rule-card-header">
+                          <div className="rule-card-title">
+                            <FileTextOutlined className="rule-icon" />
+                            <span>{item.rule_name}</span>
+                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.target.checked) {
+                                setSelectedRuleIds([...selectedRuleIds, item.id]);
+                              } else {
+                                setSelectedRuleIds(selectedRuleIds.filter(id => id !== item.id));
+                              }
+                            }}
+                            disabled={!hasFiles}
+                          />
+                        </div>
+                        <div className="rule-card-body">
+                          <Text type="secondary" className="rule-content-text">
+                            {item.rule_content?.substring(0, 150) + (item.rule_content?.length > 150 ? '...' : '')}
+                          </Text>
+                        </div>
+                        <div className="rule-card-footer">
                           <Space>
-                            {item.rule_name}
                             {hasFiles ? (
-                              <Tag color="green">已绑定文件</Tag>
+                              <Tag color="success" icon={<CheckCircleOutlined />} style={{ fontSize: 12 }}>
+                                已绑定文件
+                              </Tag>
                             ) : (
-                              <Tag color="orange">未绑定文件</Tag>
+                              <Tag color="warning" icon={<ClockCircleOutlined />} style={{ fontSize: 12 }}>
+                                未绑定文件
+                              </Tag>
+                            )}
+                            {ruleDetails[item.id]?.source_files?.length > 0 && (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {ruleDetails[item.id].source_files.length} 个文件
+                              </Text>
                             )}
                           </Space>
-                        }
-                        description={
-                          <div>
-                            <div>{item.rule_content?.substring(0, 100) + '...'}</div>
-                            {!hasFiles && (
-                              <div style={{ marginTop: 4, fontSize: 12, color: '#ff4d4f' }}>
-                                ⚠️ 未绑定源文件，AI评审时可能无法获取相关信息
-                              </div>
-                            )}
-                          </div>
-                        }
-                      />
-                    </List.Item>
+                        </div>
+                      </div>
+                    </Card>
                   );
-                }}
-              />
+                })}
+              </div>
             )}
 
             <Divider />
             
-            <Space>
-              <Button 
-                type="primary"
-                onClick={handleSaveRules}
-                loading={savingRules}
-                disabled={selectedRuleIds.length === 0}
-              >
-                保存规则配置
-              </Button>
-              <Text type="secondary">已选择 {selectedRuleIds.length} 个规则模板</Text>
-            </Space>
+            <div className="rules-actions">
+              <Space>
+                <Button 
+                  type="primary"
+                  onClick={handleSaveRules}
+                  loading={savingRules}
+                  disabled={selectedRuleIds.length === 0}
+                  size="large"
+                  className="save-rules-btn"
+                >
+                  保存规则配置
+                </Button>
+                <Text type="secondary">已选择 {selectedRuleIds.length} 个规则模板</Text>
+              </Space>
+            </div>
 
             {task.rule_ids && task.rule_ids.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+              <div className="selected-rules">
                 <Title level={5}>当前关联的规则模板</Title>
                 <Space wrap>
                   {task.rule_ids.map(ruleId => {
                     const rule = ruleTemplates.find(r => r.id === ruleId);
                     return rule ? (
-                      <Tag key={ruleId} color="blue">{rule.rule_name}</Tag>
+                      <Tag key={ruleId} color="blue" icon={<FileTextOutlined />}>
+                        {rule.rule_name}
+                      </Tag>
                     ) : null;
                   })}
                 </Space>
@@ -631,62 +720,85 @@ const TaskDetail: React.FC = () => {
 
       case 3:
         return (
-          <div>
+          <div className="execute-content">
             <Alert
-              message="准备启动 AI 评审"
+              message={
+                <Space>
+                  <RobotOutlined />
+                  <span>准备启动 AI 评审</span>
+                </Space>
+              }
               description={'将对 ' + (task?.total_companies || 0) + ' 家公司进行自动评审'}
               type="info"
               showIcon
-              style={{ marginBottom: 16 }}
+              className="execute-alert"
             />
             
-            <Space size="middle">
-              <Button 
-                type="primary" 
-                icon={<RobotOutlined />}
-                onClick={handleStartTask}
-                size="large"
-                disabled={task.status === 'processing' || task.ocr_status === 'processing' || task.total_companies === 0 || !task.rule_ids || task.rule_ids.length === 0}
-              >
-                {task.status === 'processing' ? '评审进行中...' : '启动 AI 评审'}
-              </Button>
-              
-              {task.status === 'processing' && (
+            <div className="execute-actions">
+              <Space size="large">
                 <Button 
-                  danger
-                  icon={<StopOutlined />}
-                  onClick={handleStopTask}
+                  type="primary" 
+                  icon={<RobotOutlined />}
+                  onClick={handleStartTask}
                   size="large"
+                  disabled={task.status === 'processing' || task.ocr_status === 'processing' || task.total_companies === 0 || !task.rule_ids || task.rule_ids.length === 0}
+                  className="start-task-btn"
                 >
-                  停止评审
+                  {task.status === 'processing' ? '评审进行中...' : '启动 AI 评审'}
                 </Button>
-              )}
-            </Space>
+                
+                {task.status === 'processing' && (
+                  <Button 
+                    danger
+                    icon={<StopOutlined />}
+                    onClick={handleStopTask}
+                    size="large"
+                  >
+                    停止评审
+                  </Button>
+                )}
+              </Space>
+            </div>
 
             {task.rule_ids && task.rule_ids.length > 0 && (
-              <div style={{ marginTop: 16 }}>
+              <Card className="rules-summary-card">
                 <Title level={5}>评审规则模板</Title>
                 <Space wrap>
                   {task.rule_ids.map(ruleId => {
                     const rule = ruleTemplates.find(r => r.id === ruleId);
                     return rule ? (
-                      <Tag key={ruleId} color="green">{rule.rule_name}</Tag>
+                      <Tag key={ruleId} color="success" icon={<CheckCircleOutlined />}>
+                        {rule.rule_name}
+                      </Tag>
                     ) : null;
                   })}
                 </Space>
-              </div>
+              </Card>
             )}
           </div>
         );
 
       case 4:
         return (
-          <Alert
-            message="评审已完成"
-            description="请前往「公司列表」查看各公司的详细评审结果"
-            type="success"
-            showIcon
-          />
+          <Card className="completed-card">
+            <div className="completed-content">
+              <div className="completed-icon">
+                <CheckCircleOutlined />
+              </div>
+              <Title level={4}>评审已完成</Title>
+              <Text type="secondary">请前往「公司列表」查看各公司的详细评审结果</Text>
+              <Button 
+                type="primary"
+                icon={<DashboardOutlined />}
+                onClick={() => {
+                  // 跳转到公司列表或进度页面
+                }}
+                style={{ marginTop: 16 }}
+              >
+                查看结果
+              </Button>
+            </div>
+          </Card>
         );
 
       default:
@@ -694,34 +806,155 @@ const TaskDetail: React.FC = () => {
     }
   };
 
+  // ==================== 主渲染 ====================
+
+  if (!task && !assignment && loading) {
+    return (
+      <div className="detail-loading">
+        <div className="loading-spinner">
+          <ReloadOutlined spin className="spinner-icon" />
+          <Text type="secondary">加载中...</Text>
+        </div>
+      </div>
+    );
+  }
+
+  // Assignment 新类型
+  if (assignment && !loading) {
+    const isNewType = assignment.assignment_type === 'by_criteria' || 
+                      assignment.assignment_type === 'by_company';
+    
+    if (isNewType) {
+      return (
+        <div className="assignment-detail">
+          <Button 
+            icon={<ArrowLeftOutlined />} 
+            onClick={() => navigate('/my-tasks')}
+            className="back-btn"
+          >
+            返回任务列表
+          </Button>
+
+          <Card className="assignment-header-card">
+            <Row align="middle" justify="space-between">
+              <Col>
+                <div className="assignment-title-wrapper">
+                  <div className={`assignment-icon-wrapper ${assignment.assignment_type === 'by_criteria' ? 'icon-criteria' : 'icon-company'}`}>
+                    {assignment.assignment_type === 'by_criteria' ? (
+                      <FileTextOutlined />
+                    ) : (
+                      <TeamOutlined />
+                    )}
+                  </div>
+                  <div className="assignment-info">
+                    <Title level={4} style={{ margin: 0 }}>
+                      {assignment.assignment_type === 'by_criteria' ? '按评审项评审' : '按公司评审'}
+                    </Title>
+                    <Space style={{ marginTop: 8 }}>
+                      <Tag color={assignment.assignment_type === 'by_criteria' ? 'orange' : 'green'}>
+                        {assignment.assignment_type === 'by_criteria' ? '按评审项' : '按公司'}
+                      </Tag>
+                      <Tag color={assignment.status === 'completed' ? 'success' : 'processing'}>
+                        {assignment.status === 'completed' ? '已完成' : '进行中'}
+                      </Tag>
+                      <Text type="secondary">任务 ID: #{assignment.assignment_id}</Text>
+                    </Space>
+                  </div>
+                </div>
+              </Col>
+              <Col>
+                <Statistic 
+                  title="进度"
+                  value={assignment.progress}
+                  suffix="%"
+                  valueStyle={{ fontSize: 28, fontWeight: 700 }}
+                  prefix={<Progress percent={assignment.progress} size="small" showInfo={false} />}
+                />
+              </Col>
+            </Row>
+          </Card>
+
+          <ExecutionViewPanel
+            assignmentId={assignment.assignment_id}
+            assignmentType={assignment.assignment_type === 'by_criteria' || assignment.assignment_type === 'by_company' ? assignment.assignment_type : 'by_criteria'}
+            onComplete={() => {
+              fetchAssignment();
+            }}
+          />
+        </div>
+      );
+    }
+  }
+
+  if (!task) return (
+    <div className="detail-loading">
+      <Empty description="任务不存在" />
+    </div>
+  );
+
+  const status = getStatusConfig(task.status);
+
+  const filteredCompanies = task.companies ? task.companies.filter(company => 
+    company.company_name.toLowerCase().includes(companySearchText.toLowerCase())
+  ) : [];
+
+  // 计算评审进度
+  const evaluationStats = {
+    total: task.total_companies || 0,
+    completed: (task.companies || []).filter(c => c.status === 'completed').length,
+    processing: (task.companies || []).filter(c => c.status === 'processing').length,
+    pending: (task.companies || []).filter(c => c.status === 'pending').length,
+    percentage: task.total_companies > 0 ? Math.round(((task.companies || []).filter(c => c.status === 'completed').length / task.total_companies) * 100) : 0
+  };
+
   return (
-    <div>
+    <div className="task-detail-container">
       <Button 
         icon={<ArrowLeftOutlined />} 
         onClick={() => navigate('/tasks')}
-        style={{ marginBottom: 16 }}
+        className="back-btn"
       >
         返回任务列表
       </Button>
 
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <Title level={4} style={{ margin: '0 0 8px 0' }}>{task.task_name}</Title>
+      {/* 任务信息卡片 */}
+      <Card className="task-info-card">
+        <div className="task-info-header">
+          <div className="task-info-left">
+            <Title level={4} style={{ margin: '0 0 8px 0' }} className="task-name">
+              {task.task_name}
+            </Title>
             <Space>
-              <Tag icon={status.icon} color={status.color} style={{ fontSize: 14 }}>
+              <Tag icon={status.icon} color={status.color} style={{ fontSize: 14, fontWeight: 500 }}>
                 {status.text}
               </Tag>
               <Text type="secondary">任务 ID: #{task.id}</Text>
+              <Text type="secondary">创建于：{new Date(task.created_at).toLocaleString('zh-CN')}</Text>
             </Space>
           </div>
-          <div style={{ textAlign: 'right' }}>
-            <Statistic 
-              title="公司数"
-              value={task.total_companies} 
-              valueStyle={{ fontSize: 24 }}
-            />
-            <div style={{ marginTop: 8 }}>
+          <div className="task-info-right">
+            <Row gutter={16}>
+              <Col>
+                <Statistic 
+                  title="公司数"
+                  value={task.total_companies} 
+                  valueStyle={{ fontSize: 28, fontWeight: 700 }}
+                  prefix={<TeamOutlined />}
+                />
+              </Col>
+              {task.total_score_avg !== null && (
+                <Col>
+                  <Statistic 
+                    title="平均分"
+                    value={task.total_score_avg} 
+                    precision={2}
+                    valueStyle={{ fontSize: 28, fontWeight: 700 }}
+                    prefix={<DashboardOutlined />}
+                  />
+                </Col>
+              )}
+            </Row>
+            <div className="task-info-actions">
               <Button 
                 size="small"
                 type="link"
@@ -734,123 +967,176 @@ const TaskDetail: React.FC = () => {
           </div>
         </div>
 
-        <Divider style={{ margin: '16px 0' }} />
+        <Divider className="task-info-divider" />
 
-        <Steps current={currentStep} items={steps} size="small" />
+        {/* 步骤条 */}
+        <Steps 
+          current={currentStep} 
+          items={steps} 
+          size="small" 
+          className="task-steps"
+        />
 
-        <Divider style={{ margin: '16px 0' }} />
+        <Divider className="task-info-divider" />
 
-        <Space wrap style={{ marginBottom: 16 }}>
-          {currentStep > 0 && (
-            <Button onClick={handlePrevStep} icon={<LeftOutlined />}>
-              上一步
-            </Button>
-          )}
-          {currentStep < steps.length - 1 && (
-            <Button 
-              onClick={handleNextStep} 
-              icon={<RightOutlined />}
-              disabled={currentStep === 3 && task?.status !== 'completed'}
-            >
-              下一步
-            </Button>
-          )}
-        </Space>
+        {/* 步骤导航按钮 */}
+        <div className="step-navigation">
+          <Space>
+            {currentStep > 0 && (
+              <Button 
+                onClick={handlePrevStep} 
+                icon={<LeftOutlined />}
+                size="large"
+              >
+                上一步
+              </Button>
+            )}
+            {currentStep < steps.length - 1 && (
+              <Button 
+                onClick={handleNextStep} 
+                icon={<RightOutlined />}
+                size="large"
+                type="primary"
+                disabled={currentStep === 3 && task?.status !== 'completed'}
+              >
+                下一步
+              </Button>
+            )}
+          </Space>
+        </div>
 
-        <Card>
+        {/* 步骤内容 */}
+        <Card className="step-content-card">
           {renderStepContent()}
         </Card>
       </Card>
 
-      {/* 公司列表 - 始终显示，不管在哪个步骤 */}
+      {/* 公司列表 */}
       {task.companies && task.companies.length > 0 && (
-        <Card 
-          title="公司列表" 
-          extra={<Text type="secondary">{task.total_companies} 家</Text>}
-        >
-          {/* 搜索框 */}
-          <div style={{ marginBottom: 16 }}>
-            <Input
-              placeholder="搜索公司名称"
-              value={companySearchText}
-              onChange={(e) => setCompanySearchText(e.target.value)}
-              prefix={<SearchOutlined />}
-              style={{ width: 300 }}
+        <>
+          {/* 评审进度 Card */}
+          <Card className="evaluation-progress-card" bordered={false} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <Title level={5} style={{ margin: 0 }}>
+                  <BarChartOutlined style={{ color: '#1890ff', marginRight: 8 }} />
+                  评审进度
+                </Title>
+                <Text type="secondary">已完成评审的公司数</Text>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 28, fontWeight: 'bold', color: '#1890ff' }}>
+                  {evaluationStats.completed} / {evaluationStats.total}
+                </div>
+                <Text type="secondary">家公司</Text>
+              </div>
+            </div>
+            <Progress 
+              percent={evaluationStats.percentage} 
+              strokeColor={{
+                '0%': '#108ee9',
+                '100%': '#87d068',
+              }}
+              style={{ marginTop: 16 }}
             />
-          </div>
+          </Card>
 
+          <Card 
+            title={
+              <Space>
+                <TeamOutlined />
+                <span>公司列表</span>
+              </Space>
+            }
+            extra={
+              <Space>
+                <Text type="secondary">{task.total_companies} 家</Text>
+                <Input
+                  placeholder="搜索公司名称"
+                  value={companySearchText}
+                  onChange={(e) => setCompanySearchText(e.target.value)}
+                  prefix={<SearchOutlined />}
+                  style={{ width: 250 }}
+                  className="company-search"
+                />
+              </Space>
+            }
+            className="companies-card"
+          >
           <Table
             columns={[
               {
                 title: '公司名称',
                 dataIndex: 'company_name',
                 key: 'company_name',
-                width: 250,
-                render: (text: string) => <Text strong>{text}</Text>
+                width: 280,
+                fixed: 'left',
+                render: (text: string) => (
+                  <span className="company-name">{text}</span>
+                )
               },
               {
                 title: '状态',
                 dataIndex: 'status',
                 key: 'status',
-                width: 100,
+                width: 120,
                 render: (status: string) => {
                   const config = getStatusConfig(status);
-                  return <Tag icon={config.icon} color={config.color}>{config.text}</Tag>;
+                  return (
+                    <Tag icon={config.icon} color={config.color} style={{ fontWeight: 500 }}>
+                      {config.text}
+                    </Tag>
+                  );
                 }
               },
               {
                 title: '文件数',
                 key: 'file_count',
-                width: 100,
+                width: 120,
                 render: (_: any, record: Company) => (
-                  <Text type="secondary">{record.file_count || 0} 个文件</Text>
+                  <Space>
+                    <FolderOutlined style={{ color: '#1890ff' }} />
+                    <Text type="secondary">{record.file_count || 0} 个文件</Text>
+                  </Space>
                 )
               },
               {
                 title: '规则进度',
                 key: 'rule_progress',
-                width: 150,
+                width: 180,
                 render: (_: any, record: Company) => {
                   const totalRules = task.rule_ids?.length || 0;
                   const processedRules = record.processed_rules || 0;
+                  const percent = totalRules > 0 ? (processedRules / totalRules) * 100 : 0;
                   return (
-                    <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                    <div className="company-progress">
                       <Progress 
-                        percent={totalRules > 0 ? (processedRules / totalRules) * 100 : 0}
+                        percent={percent}
                         size="small"
-                        format={() => processedRules + '/' + totalRules}
+                        format={() => `${processedRules}/${totalRules}`}
+                        status={percent === 100 ? 'success' : 'active'}
                       />
-                      <Text type="secondary" style={{ fontSize: 11 }}>
+                      <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
                         {totalRules > 0 ? '规则评审中' : '待配置规则'}
                       </Text>
-                    </Space>
+                    </div>
                   );
                 }
               },
               {
                 title: '操作',
                 key: 'action',
-                width: 180,
+                width: 120,
+                fixed: 'right',
                 render: (_: any, record: Company) => (
-                  <Space>
-                    <Button 
-                      size="small"
-                      icon={<FolderOutlined />}
-                      onClick={() => {
-                        setSelectedCompany(record);
-                        setShowFileTree(true);
-                      }}
-                    >
-                      文件树
-                    </Button>
-                    <Button 
-                      size="small"
-                      type="link"
-                      onClick={() => navigate('/companies/' + record.id)}
-                    >
-                      详情
-                    </Button>
-                  </Space>
+                  <Button 
+                    size="small"
+                    type="link"
+                    icon={<ArrowRightOutlined />}
+                    onClick={() => navigate('/companies/' + record.id)}
+                  >
+                    详情
+                  </Button>
                 )
               }
             ]}
@@ -864,17 +1150,25 @@ const TaskDetail: React.FC = () => {
               pageSizeOptions: ['10', '20', '50'],
               showTotal: (total) => `共 ${total} 家公司`
             }}
-            scroll={{ x: 700 }}
+            scroll={{ x: 1000 }}
+            className="companies-table"
           />
-        </Card>
+          </Card>
+        </>
       )}
 
       <Drawer
-        title={<Space><FolderOutlined /> 文件树 - {selectedCompany?.company_name}</Space>}
+        title={
+          <Space>
+            <FolderOutlined /> 
+            <span>文件树 - {selectedCompany?.company_name}</span>
+          </Space>
+        }
         placement="right"
         width={1500}
         open={showFileTree}
         onClose={() => setShowFileTree(false)}
+        className="file-tree-drawer"
       >
         {selectedCompany?.bid_folder_path && (
           <FileTreeExplorer 

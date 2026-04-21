@@ -1,0 +1,408 @@
+/* ============================
+   ManagerSelection - 负责人选择器
+   专业、精致、有细节的设计
+   ============================ */
+
+.add-member-section {
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* 头部区域 */
+.add-member-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1.5px solid #f0f0f0;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.25);
+}
+
+.title-text h5 {
+  margin: 0;
+  font-weight: 700;
+  font-size: 16px;
+  color: #333;
+  line-height: 1.3;
+}
+
+.title-text .ant-typography-secondary {
+  font-size: 13px;
+  color: #999;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.header-stats {
+  display: flex;
+  gap: 8px;
+}
+
+/* 搜索栏 */
+.search-filter-bar {
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.search-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.search-wrapper .ant-input-search {
+  width: 100%;
+}
+
+.search-wrapper .ant-input-affix-wrapper {
+  border: 2px solid #e0e0e0 !important;
+  border-radius: 10px !important;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%) !important;
+  transition: all 0.25s ease !important;
+  box-sizing: border-box !important;
+  padding: 0 16px !important;
+}
+
+.search-wrapper .ant-input-affix-wrapper:hover {
+  border-color: #bfbfbf !important;
+  background: #fff !important;
+}
+
+.search-wrapper .ant-input-affix-wrapper:focus-within {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.15) !important;
+  background: #fff !important;
+}
+
+.search-wrapper .ant-input {
+  height: 100% !important;
+  font-size: 15px;
+  background: transparent !important;
+}
+
+.search-wrapper .ant-input-prefix {
+  color: #999;
+  margin-right: 12px;
+  font-size: 16px;
+}
+
+.search-wrapper .ant-input-suffix .ant-input-clear-icon {
+  color: #999;
+}
+
+.search-wrapper .ant-input-suffix .ant-input-clear-icon:hover {
+  color: #666;
+}
+
+/* 负责人卡片网格 */
+.member-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.member-cards-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.member-cards-grid::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+
+.member-cards-grid::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* 负责人卡片 */
+.member-select-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: #fafafa;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  cursor: pointer;
+  position: relative;
+  min-height: 80px;
+  user-select: none;
+}
+
+.member-select-card:hover {
+  border-color: #1890ff;
+  background: #f0f7ff;
+}
+
+.member-select-card.selected {
+  border-color: #1890ff;
+  background: linear-gradient(135deg, #e6f7ff 0%, #fff 100%);
+  box-shadow: 0 6px 20px rgba(24, 144, 255, 0.2);
+}
+
+/* 选中复选框 */
+.card-checkbox {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.checkbox-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #d9d9d9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.member-select-card.selected .checkbox-indicator {
+  opacity: 1;
+  background: #1890ff;
+  border-color: #1890ff;
+  animation: checkBounce 0.3s ease;
+}
+
+.checkbox-indicator.checked {
+  color: #fff;
+  font-size: 14px;
+}
+
+@keyframes checkBounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* 卡片内容 */
+.card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-avatar {
+  flex-shrink: 0;
+}
+
+.card-avatar .ant-avatar {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 8px;
+  font-size: 18px;
+  transition: all 0.2s ease;
+}
+
+.member-select-card.selected .card-avatar .ant-avatar {
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
+}
+
+.card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.card-username {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-role {
+  margin-top: 2px;
+}
+
+.card-role .ant-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* 无用户占位符 */
+.no-users-placeholder {
+  grid-column: 1 / -1;
+  padding: 60px 20px;
+}
+
+.no-users-placeholder .ant-empty {
+  padding: 0;
+}
+
+.no-users-placeholder .ant-empty-image {
+  opacity: 0.5;
+}
+
+.no-users-placeholder .ant-empty-description {
+  font-size: 14px;
+  color: #999;
+  font-weight: 500;
+  margin-top: 12px;
+}
+
+/* 已选负责人底部 */
+.selected-users-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f6ffed 0%, #fff 100%);
+  border: 1.5px solid #b7eb8f;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.08);
+}
+
+.selected-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.summary-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(82, 196, 26, 0.25);
+}
+
+.summary-icon .anticon {
+  color: #fff;
+  font-size: 16px;
+}
+
+.summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #333 !important;
+  -webkit-text-fill-color: initial !important;
+  background: none !important;
+}
+
+.summary-users {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-users .ant-tag {
+  font-weight: 500;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 8px;
+}
+
+/* 取消选择按钮 */
+.selected-users-footer .ant-btn-link {
+  color: #ff4d4f;
+  font-weight: 500;
+  font-size: 14px;
+  height: auto;
+  padding: 4px 8px;
+}
+
+.selected-users-footer .ant-btn-link:hover {
+  color: #ff7875;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .add-member-section {
+    padding: 16px;
+  }
+
+  .add-member-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .member-cards-grid {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .selected-users-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .selected-users-footer .ant-btn-link {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* 焦点状态 - 无障碍 */
+.member-select-card:focus {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+}
+
+/* 减少动画 */
+@media (prefers-reduced-motion: reduce) {
+  .member-select-card,
+  .checkbox-indicator {
+    transition: none;
+  }
+
+  @keyframes checkBounce {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}

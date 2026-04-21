@@ -546,20 +546,533 @@ def run_ai_evaluation(task_id: int):
                     company_results = db.query(EvaluationResult).filter(
                         EvaluationResult.company_bid_id == company.id
                     ).all()
-                    total_score = sum(r.score for r in company_results) if company_results else 0.0
-                    avg_score = total_score / len(company_results) if company_results else 0.0
                     
-                    company.status = "completed"
-                    company.total_score = avg_score
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
                     db.commit()
                     
-                    logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，得分：{avg_score:.1f}")
                 except Exception as e:
-                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败: {e}")
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
                     logger.debug(traceback.format_exc())
                     company.status = "failed"
                     db.commit()
-                
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
+                # 计算公司总评分
+                try:
+                    company_results = db.query(EvaluationResult).filter(
+                        EvaluationResult.company_bid_id == company.id
+                    ).all()
+                    
+                    # 计算有效评分（score 不为 None）
+                    valid_scores = [r.score for r in company_results if r.score is not None]
+                    
+                    if valid_scores:
+                        total_score = sum(valid_scores)
+                        avg_score = total_score / len(valid_scores)
+                        company.status = "completed"
+                        company.total_score = avg_score
+                        logger.info(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 评估完成，有效评分数：{len(valid_scores)}，得分：{avg_score:.1f}")
+                    else:
+                        # 没有有效评分，设置为 failed
+                        company.status = "failed"
+                        company.total_score = None
+                        logger.warning(f"[TASK:{task_id}] [{company_index + 1}/{len(companies)}] 公司 {company.company_name} 无有效评分，标记为失败")
+                    
+                    db.commit()
+                    
+                except Exception as e:
+                    logger.error(f"[TASK:{task_id}] 计算公司总评分失败：{e}")
+                    logger.debug(traceback.format_exc())
+                    company.status = "failed"
+                    db.commit()
             except Exception as e:
                 logger.error(f"[TASK:{task_id}] 评估公司 {company.company_name} 失败: {e}")
                 logger.debug(traceback.format_exc())
@@ -763,7 +1276,7 @@ async def get_task(task_id: int):
         company_data = []
         for company in companies:
             result_count = db.query(EvaluationResult).filter(EvaluationResult.company_bid_id == company.id).count()
-            # 计算文件数（只统计实际文件，不统计文件夹）
+            # 计算文件数（只统计实际文件，不统计文件夹，排除 .md 和 .json 文件）
             file_count = 0
             if company.bid_folder_path:
                 import os
@@ -771,8 +1284,9 @@ async def get_task(task_id: int):
                 try:
                     folder = Path(company.bid_folder_path)
                     if folder.exists():
-                        # 只统计文件，不统计文件夹
-                        file_count = len([f for f in folder.rglob('*') if f.is_file()])
+                        # 只统计文件，不统计文件夹，排除 .md 和 .json 文件
+                        excluded_extensions = {'.md', '.json'}
+                        file_count = len([f for f in folder.rglob('*') if f.is_file() and f.suffix.lower() not in excluded_extensions])
                 except:
                     pass
             

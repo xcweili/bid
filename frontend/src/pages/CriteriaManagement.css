@@ -1,0 +1,52 @@
+.criteria-management {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.criteria-card {
+  background: #fff;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Tabs 样式调整 */
+.criteria-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
+.criteria-tabs .ant-tabs-nav::before {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* 增加 Tabs 导航高度 */
+.criteria-tabs .ant-tabs-nav-wrap {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.criteria-tabs .ant-tabs-tab {
+  padding: 20px 24px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+/* 增加 tab 文字与下划线的间距 */
+.criteria-tabs .ant-tabs-tab-btn {
+  padding-bottom: 8px;
+}

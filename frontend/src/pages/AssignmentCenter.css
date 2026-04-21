@@ -1,0 +1,579 @@
+/**
+ * AssignmentCenter - 任务分配中心样式
+ * 风格：沉稳专业，灰色/蓝色主色调
+ */
+
+/* ==================== 主容器 ==================== */
+
+.assignment-center {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  background: #f5f7fa;
+}
+
+.assignment-center-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+/* ==================== AssignmentHeader ==================== */
+
+.assignment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: white;
+  border-bottom: 1px solid #e4e9ed;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-back-btn {
+  background: #f5f7fa;
+  border: none;
+}
+
+.header-back-btn:hover {
+  background: #e4e9ed;
+}
+
+.header-title-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 !important;
+}
+
+.header-subtitle {
+  font-size: 13px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.header-stats {
+  display: flex;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-tag {
+  font-weight: 600;
+}
+
+/* ==================== DispatchModeSelector ==================== */
+
+.mode-selector {
+  padding: 16px 24px;
+  background: white;
+  border-bottom: 1px solid #e4e9ed;
+  flex-shrink: 0;
+}
+
+.mode-selector-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 12px;
+}
+
+.mode-options {
+  display: flex;
+  gap: 16px;
+}
+
+.mode-card {
+  transition: all 0.2s ease;
+  border: 2px solid #e4e9ed;
+}
+
+.mode-card:hover {
+  border-color: #3498db;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
+}
+
+.mode-card.selected {
+  background: #ebf5fb;
+  border-color: #3498db;
+  box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+}
+
+.mode-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.mode-card-icon {
+  color: #8595a4;
+  transition: color 0.2s ease;
+}
+
+.mode-card-icon.icon-primary {
+  color: #3498db;
+}
+
+.mode-card-title {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #2c3e50;
+}
+
+.mode-card-desc {
+  font-size: 12px;
+  color: #8595a4;
+}
+
+.mode-selector-hint {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* ==================== AssignmentMain ==================== */
+
+.assignment-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ==================== ResourcePanel ==================== */
+
+.resource-panel {
+  width: 300px;
+  min-width: 300px;
+  background: white;
+  border-right: 1px solid #e4e9ed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.resource-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e9ed;
+  flex-shrink: 0;
+}
+
+.resource-panel-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #2c3e50;
+  margin: 0 !important;
+}
+
+.resource-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.resource-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.resource-list::-webkit-scrollbar-track {
+  background: #f5f7fa;
+}
+
+.resource-list::-webkit-scrollbar-thumb {
+  background: #d1d9e0;
+  border-radius: 3px;
+}
+
+.resource-list::-webkit-scrollbar-thumb:hover {
+  background: #aab7c4;
+}
+
+.resource-item {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: white;
+  border: 1px solid #e4e9ed;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.resource-item:hover {
+  border-color: #3498db;
+  background: #f8f9fa;
+}
+
+.resource-item.selected {
+  border-color: #3498db;
+  background: #ebf5fb;
+}
+
+.resource-item.assigned {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.resource-item-checkbox {
+  width: 100%;
+}
+
+.resource-item-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.resource-item-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resource-item-name {
+  font-size: 14px;
+  color: #2c3e50;
+}
+
+.resource-selected-info {
+  padding: 12px 16px;
+  border-top: 1px solid #e4e9ed;
+  background: #f8f9fa;
+  flex-shrink: 0;
+}
+
+/* ==================== AssignmentOperationPanel ==================== */
+
+.operation-panel {
+  flex: 1;
+  padding: 20px;
+  background: #f5f7fa;
+  overflow-y: auto;
+}
+
+.operation-panel-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #2c3e50;
+  margin-bottom: 16px !important;
+}
+
+.team-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.team-member-card {
+  transition: box-shadow 0.2s ease;
+}
+
+.team-member-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.team-member-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 12px;
+}
+
+.team-member-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.team-member-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.team-member-role {
+  font-size: 12px;
+}
+
+.team-member-stats {
+  display: flex;
+  align-items: center;
+}
+
+.team-member-assignments {
+  min-height: 40px;
+}
+
+.team-member-empty {
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.team-member-resources-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ==================== AssignmentPreview ==================== */
+
+.preview-panel {
+  width: 350px;
+  min-width: 350px;
+  background: white;
+  border-left: 1px solid #e4e9ed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.preview-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e9ed;
+  flex-shrink: 0;
+}
+
+.preview-panel-title-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-panel-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #2c3e50;
+  margin: 0 !important;
+}
+
+.preview-panel-count {
+  font-weight: 600;
+}
+
+.preview-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.preview-panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.preview-panel-content::-webkit-scrollbar-track {
+  background: #f5f7fa;
+}
+
+.preview-panel-content::-webkit-scrollbar-thumb {
+  background: #d1d9e0;
+  border-radius: 3px;
+}
+
+.preview-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.preview-member-card {
+  background: #f8f9fa;
+  border: 1px solid #e4e9ed;
+}
+
+.preview-member-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.preview-member-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.preview-member-resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preview-summary {
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e4e9ed;
+}
+
+.preview-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+
+/* ==================== AssignmentFooter ==================== */
+
+.assignment-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: white;
+  border-top: 1px solid #e4e9ed;
+  flex-shrink: 0;
+}
+
+.footer-stats {
+  display: flex;
+  align-items: center;
+}
+
+.footer-stat-item {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #5d6d7e;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* ==================== 响应式设计 ==================== */
+
+/* 平板端 */
+@media (max-width: 1200px) {
+  .resource-panel {
+    width: 280px;
+    min-width: 280px;
+  }
+
+  .preview-panel {
+    width: 300px;
+    min-width: 300px;
+  }
+}
+
+/* 小屏桌面 */
+@media (max-width: 1024px) {
+  .assignment-main {
+    flex-direction: column;
+  }
+
+  .resource-panel {
+    width: 100%;
+    min-width: 0;
+    max-height: 300px;
+    border-right: none;
+    border-bottom: 1px solid #e4e9ed;
+  }
+
+  .preview-panel {
+    width: 100%;
+    min-width: 0;
+    max-height: 300px;
+    border-left: none;
+    border-top: 1px solid #e4e9ed;
+  }
+
+  .mode-options {
+    flex-wrap: wrap;
+  }
+}
+
+/* 移动端 */
+@media (max-width: 768px) {
+  .assignment-header {
+    padding: 12px 16px;
+  }
+
+  .header-title {
+    font-size: 16px !important;
+  }
+
+  .mode-selector {
+    padding: 12px 16px;
+  }
+
+  .operation-panel {
+    padding: 12px;
+  }
+
+  .assignment-footer {
+    padding: 12px 16px;
+    flex-direction: column;
+    gap: 12px;
+    height: auto;
+  }
+
+  .footer-stats {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .footer-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* ==================== Ant Design 覆盖 ==================== */
+
+.assignment-center .ant-card {
+  border: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.assignment-center .ant-tag {
+  font-weight: 500;
+}
+
+.assignment-center .ant-btn-primary {
+  background: #3498db;
+  border-color: #3498db;
+}
+
+.assignment-center .ant-btn-primary:hover {
+  background: #2980b9;
+  border-color: #2980b9;
+}
+
+.assignment-center .ant-progress-text {
+  font-weight: 600;
+}

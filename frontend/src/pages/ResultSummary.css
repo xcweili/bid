@@ -1,0 +1,33 @@
+.result-summary {
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-content {
+  max-width: 1400px;
+}
+
+.action-card,
+.rankings-card,
+.details-card {
+  background: #fff;
+  margin-bottom: 16px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

@@ -138,7 +138,7 @@ class FileProcessor:
         
         return name
 
-    def _find_company_folders(self, root_dir: Path, depth: int = 0, max_depth: int = 5) -> List[Dict]:
+    def _find_company_folders(self, root_dir: Path, depth: int = 0, max_depth: int = 10) -> List[Dict]:
         """递归查找公司文件夹
 
         检测规则：

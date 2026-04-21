@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Tree, Spin, message, Card, Statistic, Space, Button, Typography } from 'antd';
 import type { TreeProps } from 'antd';
 import {
@@ -14,6 +14,7 @@ import {
 } from '@ant-design/icons';
 import { saveAs } from 'file-saver';
 import * as docx from 'docx-preview';
+import apiClient from '../services/api';
 import './FileTreeExplorer.css';
 
 const { Title } = Typography;
@@ -42,6 +43,9 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
   const [wordLoading, setWordLoading] = useState(false);
   const [wordError, setWordError] = useState<string | null>(null);
   const wordPreviewRef = React.useRef<HTMLDivElement>(null);
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(40); // 左侧面板宽度百分比
+  const resizerRef = useRef<HTMLDivElement>(null);
+  const isResizing = useRef(false);
 
   console.log('🔥🔥🔥 FileTreeExplorer 组件已加载 🔥🔥🔥');
   console.log('companyId:', companyId);
@@ -57,15 +61,15 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
     }
     setLoading(true);
     try {
-      const response = await fetch(`/api/companies/${companyId}/files`);
-      const data = await response.json();
+      const response = await apiClient.get(`/api/companies/${companyId}/files`);
+      const data = response.data;
       console.log('FileTreeExplorer: loaded files', data);
       setFileTree(data.files || []);
       const firstLevelKeys = (data.files || []).filter((node: FileNode) => node.children).map((node: FileNode) => node.key);
       setExpandedKeys(firstLevelKeys);
-    } catch (error) {
+    } catch (error: any) {
       console.error('FileTreeExplorer: load error', error);
-      message.error('加载文件树失败');
+      message.error('加载文件树失败：' + (error.response?.data?.detail || error.message || '未知错误'));
     } finally {
       setLoading(false);
     }
@@ -74,6 +78,53 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
   useEffect(() => {
     loadFileTree();
   }, [loadFileTree]);
+
+  // 拖动分隔条逻辑
+  useEffect(() => {
+    const resizer = resizerRef.current;
+    if (!resizer) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      isResizing.current = true;
+      resizer.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      
+      const container = resizer.parentElement;
+      if (!container) return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const newWidth = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+      
+      // 限制宽度范围 30% - 70%
+      if (newWidth >= 30 && newWidth <= 70) {
+        setLeftPanelWidth(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+      if (resizer) {
+        resizer.classList.remove('active');
+      }
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    resizer.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      resizer.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const getFileIcon = (type: string) => {
     const iconMap: Record<string, React.ReactNode> = {
@@ -123,7 +174,8 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
     
     try {
       const url = `/api/companies/files/download?path=${encodeURIComponent(selectedFile.path)}`;
-      const response = await fetch(url);
+      // 使用 axios 下载文件
+      const response = await apiClient.get(url, { responseType: 'blob' });
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -198,10 +250,11 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
       const apiUrl = `/api/companies/files/content?path=${filePath}`;
       console.log('请求文件内容:', apiUrl);
       
-      const response = await fetch(apiUrl);
+      const response = await apiClient.get(apiUrl);
       console.log('响应状态:', response.status);
       
-      const data = await response.json();
+      // axios 自动解析 JSON，直接使用 response.data
+      const data = response.data;
       console.log('响应数据:', data);
       
       if (data.content) {
@@ -210,9 +263,10 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
       } else {
         setFileContent('⚠️ 暂无内容预览');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Load file content error:', error);
-      setFileContent(`❌ 无法预览此文件：${error}`);
+      const errorMsg = error?.message || error?.toString() || '未知错误';
+      setFileContent(`❌ 无法预览此文件：${errorMsg}`);
     } finally {
       setLoading(false);
     }
@@ -224,9 +278,9 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
 
   const handleDownload = (node: FileNode) => {
     if (node.path) {
-      fetch(`/api/companies/files/download?path=${encodeURIComponent(node.path)}`)
-        .then(response => response.blob())
-        .then(blob => {
+      apiClient.get(`/api/companies/files/download?path=${encodeURIComponent(node.path)}`, { responseType: 'blob' })
+        .then(response => {
+          const blob = new Blob([response.data]);
           saveAs(blob, node.title);
         })
         .catch(error => {
@@ -265,11 +319,18 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
   const stats = calculateStats();
 
   return (
-    <div className="file-tree-explorer">
+    <div className="file-tree-explorer" style={{ '--left-panel-width': `${leftPanelWidth}%` } as React.CSSProperties}>
       <div className="file-tree-panel">
-        <Card size="small" title="文件列表" style={{ marginBottom: 16 }} extra={<Button icon={<ReloadOutlined />} onClick={loadFileTree}>刷新</Button>}>
+        <div className="file-tree-header">
+          <Space size="small">
+            <FolderOutlined />
+            <span style={{ fontWeight: 600 }}>文件列表</span>
+          </Space>
+          <Button size="small" icon={<ReloadOutlined />} onClick={loadFileTree}>刷新</Button>
+        </div>
+        <div className="file-tree-content">
           {loading ? (
-            <div style={{ textAlign: 'center', padding: 20 }}>
+            <div style={{ textAlign: 'center', padding: 40 }}>
               <Spin size="small" />
             </div>
           ) : (
@@ -283,31 +344,33 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
               showLine={{ showLeafIcon: false }}
             />
           )}
-        </Card>
-
-        <Card size="small" title="文件统计">
-          <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-            <Statistic
-              title="文件数"
-              value={stats.fileCount}
-              prefix={<FileOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
-            <Statistic
-              title="文件夹"
-              value={stats.folderCount}
-              prefix={<FolderOutlined />}
-              valueStyle={{ fontSize: 20 }}
-            />
-            <Statistic
-              title="总大小"
-              value={Number(stats.totalSize).toFixed(2)}
-              suffix="MB"
-              valueStyle={{ fontSize: 20 }}
-            />
-          </div>
-        </Card>
+        </div>
+        <div className="file-tree-stats">
+          <Card size="small" title="文件统计">
+            <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+              <Statistic
+                title="文件数"
+                value={stats.fileCount}
+                prefix={<FileOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+              <Statistic
+                title="文件夹"
+                value={stats.folderCount}
+                prefix={<FolderOutlined />}
+                valueStyle={{ fontSize: 20 }}
+              />
+              <Statistic
+                title="总大小"
+                value={Number(stats.totalSize).toFixed(2)}
+                suffix="MB"
+                valueStyle={{ fontSize: 20 }}
+              />
+            </div>
+          </Card>
+        </div>
       </div>
+      <div className="file-tree-resizer" ref={resizerRef} />
 
       <div className="file-preview-panel">
         {selectedFile ? (
@@ -332,7 +395,7 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
               ) : selectedFile.type === 'image' ? (
                 <div style={{ textAlign: 'center', padding: 20 }}>
                   <img 
-                    src={`/api/companies/files/download?path=${encodeURIComponent(selectedFile.path!)}&attachment=false`} 
+                    src={apiClient.defaults.baseURL + `/api/companies/files/download?path=${encodeURIComponent(selectedFile.path!)}&attachment=false`} 
                     alt={selectedFile.title}
                     style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
                     onError={(e) => {
@@ -347,7 +410,7 @@ const FileTreeExplorer: React.FC<FileTreeExplorerProps> = ({ companyFolder, comp
                 </div>
               ) : selectedFile.type === 'pdf' ? (
                 <iframe
-                  src={`/api/companies/files/download?path=${encodeURIComponent(selectedFile.path!)}&attachment=false`}
+                  src={apiClient.defaults.baseURL + `/api/companies/files/download?path=${encodeURIComponent(selectedFile.path!)}&attachment=false`}
                   title={selectedFile.title}
                   style={{ width: '100%', height: '80vh', border: 'none' }}
                   onError={() => {

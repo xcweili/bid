@@ -20,13 +20,13 @@ export interface RuleConfig {
 export const ruleService = {
   // 获取规则列表
   getRules: async () => {
-    const response = await api.get('/rules/');
+    const response = await api.get('/api/rules/');
     return response.data;
   },
 
   // 获取规则详情
   getRule: async (ruleId: number) => {
-    const response = await api.get(`/rules/${ruleId}`);
+    const response = await api.get(`/api/rules/${ruleId}`);
     return response.data;
   },
 
@@ -34,7 +34,7 @@ export const ruleService = {
   uploadRule: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post('/rules/', formData, {
+    const response = await api.post('/api/rules/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
@@ -42,25 +42,25 @@ export const ruleService = {
 
   // 创建评审项
   createReviewItem: async (item: ReviewItem) => {
-    const response = await api.post('/rules/item/', item);
+    const response = await api.post('/api/rules/item/', item);
     return response.data;
   },
 
   // 更新规则配置
   updateRuleConfig: async (ruleId: number, config: RuleConfig) => {
-    const response = await api.put(`/rules/${ruleId}/config`, config);
+    const response = await api.put(`/api/rules/${ruleId}/config`, config);
     return response.data;
   },
 
   // 绑定文件
   bindFiles: async (ruleId: number, source_files: string[]) => {
-    const response = await api.post(`/rules/${ruleId}/bind-files`, { source_files });
+    const response = await api.post(`/api/rules/${ruleId}/bind-files`, { source_files });
     return response.data;
   },
 
   // 删除规则
   deleteRule: async (ruleId: number) => {
-    const response = await api.delete(`/rules/${ruleId}`);
+    const response = await api.delete(`/api/rules/${ruleId}`);
     return response.data;
   }
 };

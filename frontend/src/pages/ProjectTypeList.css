@@ -1,0 +1,18 @@
+.project-type-card {
+  border-radius: 8px;
+}
+
+.project-type-card .ant-card-body {
+  padding: 24px;
+}
+
+.project-type-list-page {
+  padding: 24px;
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.project-type-list-page .ant-card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}

@@ -8,22 +8,25 @@ from pathlib import Path
 from typing import Optional
 from PIL import Image
 from loguru import logger
-
-# 注意：实际使用时应将 key 和 base_url 配置到环境变量
 import os
 import openai
+from dotenv import load_dotenv
 
+# 加载环境变量
+load_dotenv()
+
+# GPUStack API 配置
 client = openai.Client(
-    api_key="gpustack_ddb0c780dd843b12_67fea5d3d141e2f75091b6ba6e495707",
-    base_url="http://10.255.216.2/v1",
+    api_key=os.getenv("LLM_API_KEY", "gpustack_ddb0c780dd843b12_67fea5d3d141e2f75091b6ba6e495707"),
+    base_url=os.getenv("LLM_BASE_URL", "http://10.255.216.2/v1"),
 )
 
-# 模型配置
-DEEPSEEK_MODEL = "deepseek-r1-0528-awq"
-QWEN_TEXT_MODEL = "qwen3-32b"
-QWEN_VL_MODEL = "qwen3-vl-32b-instruct"
-OCR_MODEL = "ocr"
-QWEN_122B_MODEL = "qwen3.5-122b"
+# 模型配置（仅保留两个模型）
+OCR_MODEL = os.getenv("OCR_MODEL", "ocr")
+QWEN_122B_MODEL = os.getenv("QWEN_122B_MODEL", "qwen3.5-122b")
+
+logger.info(f"LLM 服务初始化：BASE_URL={client.base_url}")
+logger.info(f"可用模型：OCR={OCR_MODEL}, QWEN_122B={QWEN_122B_MODEL}")
 
 
 class LLMService:

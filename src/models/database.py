@@ -5,9 +5,26 @@ from sqlalchemy.ext.declarative import declarative_base
 import os
 
 # 数据库 URL
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 数据库文件位于 src/bid_evaluation.db (与 src 目录同级)
+# __file__ = /home/xcweili/.openclaw/workspace/bid/src/models/database.py
+# dirname(__file__) = /home/xcweili/.openclaw/workspace/bid/src/models
+# dirname(dirname(__file__)) = /home/xcweili/.openclaw/workspace/bid/src
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATABASE_PATH = os.path.join(BASE_DIR, "bid_evaluation.db")
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
+
+# 验证数据库路径
+if not os.path.exists(DATABASE_PATH):
+    logger.warning(f"Database not found at {DATABASE_PATH}, searching...")
+    # 搜索可能的数据库位置（向后兼容）
+    for search_path in [
+        os.path.join(os.path.dirname(BASE_DIR), "bid_evaluation.db"),  # bid/bid_evaluation.db (旧位置)
+    ]:
+        if os.path.exists(search_path):
+            DATABASE_PATH = search_path
+            logger.info(f"Found database at {DATABASE_PATH} (fallback location)")
+            break
+
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 # 创建引擎
 engine = create_engine(
