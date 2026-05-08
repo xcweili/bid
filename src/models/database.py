@@ -40,6 +40,8 @@ def init_db():
     from models.evaluation_rules import EvaluationRule, TaskRule
     from models.company_bids import CompanyBid
     from models.evaluation_results import EvaluationResult
+    from models.project_structure import Project, Section, Package, Bidder
+    from models.evaluation_items import EvaluationItem, PackageItem
     
     Base.metadata.create_all(bind=engine)
 

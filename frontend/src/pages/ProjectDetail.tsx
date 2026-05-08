@@ -1,0 +1,711 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Card, Typography, Tag, Button, Space, message,
+  Descriptions, Tabs, Table, Statistic, Empty, Badge,
+  Modal, Checkbox, InputNumber, Tooltip, Divider, Select, Input
+} from 'antd';
+import {
+  ArrowLeftOutlined, FolderOpenOutlined, InboxOutlined,
+  BankOutlined, ReloadOutlined, EyeOutlined, PlusOutlined,
+  SaveOutlined, SettingOutlined, PlayCircleOutlined,
+  BarChartOutlined
+} from '@ant-design/icons';
+import { evaluationItemService, EvaluationItem, PackageItemWithDetails } from '../services/evaluationItemService';
+
+const { Title, Text } = Typography;
+const { TabPane } = Tabs;
+const { Option } = Select;
+
+interface Bidder {
+  id: number;
+  package_id: number;
+  company_name: string;
+  social_credit_code: string;
+}
+
+interface Package {
+  id: number;
+  section_id: number;
+  package_no: string;
+  status: string;
+  bidder_count: number;
+  item_count: number;
+  bidders: Bidder[];
+}
+
+interface Section {
+  id: number;
+  project_id: number;
+  section_code: string;
+  section_name: string;
+  package_count: number;
+  packages: Package[];
+}
+
+interface Project {
+  id: number;
+  project_code: string;
+  project_name: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  section_count: number;
+  sections: Section[];
+}
+
+const ProjectDetail: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('section');
+  const [selectedSection, setSelectedSection] = useState<Section | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
+  const [allItems, setAllItems] = useState<EvaluationItem[]>([]);
+  const [packageItems, setPackageItems] = useState<PackageItemWithDetails[]>([]);
+  const [showConfigModal, setShowConfigModal] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+
+  useEffect(() => {
+    if (id) {
+      fetchProject();
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchAllItems();
+  }, []);
+
+  useEffect(() => {
+    if (selectedPackage) {
+      fetchPackageItems(selectedPackage.id);
+    }
+  }, [selectedPackage]);
+
+  const fetchProject = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/projects/${id}`);
+      const data = await response.json();
+      setProject(data);
+      // 默认选中第一个标段
+      if (data.sections && data.sections.length > 0) {
+        setSelectedSection(data.sections[0]);
+        // 默认选中第一个包
+        if (data.sections[0].packages && data.sections[0].packages.length > 0) {
+          setSelectedPackage(data.sections[0].packages[0]);
+        }
+      }
+    } catch (error) {
+      message.error('获取项目详情失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAllItems = async () => {
+    try {
+      const items = await evaluationItemService.getAllItems();
+      setAllItems(items.filter(i => i.is_active));
+    } catch (error) {
+      console.error('获取评审项失败:', error);
+    }
+  };
+
+  const fetchPackageItems = async (packageId: number) => {
+    try {
+      const items = await evaluationItemService.getPackageItems(packageId);
+      setPackageItems(items);
+      setSelectedItemIds(items.map(item => item.id));
+    } catch (error) {
+      console.error('获取包评审项失败:', error);
+    }
+  };
+
+  const getStatusConfig = (status: string) => {
+    const configs: Record<string, { color: string; text: string }> = {
+      pending: { color: 'default', text: '待处理' },
+      processing: { color: 'processing', text: '评审中' },
+      completed: { color: 'success', text: '已完成' },
+    };
+    return configs[status] || configs.pending;
+  };
+
+  const handleSectionChange = (section: Section) => {
+    setSelectedSection(section);
+    // 切换到该标段的第一个包
+    if (section.packages && section.packages.length > 0) {
+      setSelectedPackage(section.packages[0]);
+    } else {
+      setSelectedPackage(null);
+    }
+  };
+
+  const handlePackageChange = (pkg: Package) => {
+    setSelectedPackage(pkg);
+  };
+
+  const handleConfigItems = () => {
+    setShowConfigModal(true);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!selectedPackage) return;
+    
+    try {
+      await evaluationItemService.setPackageItems(selectedPackage.id, selectedItemIds);
+      message.success('评审项配置成功');
+      setShowConfigModal(false);
+      fetchPackageItems(selectedPackage.id);
+    } catch (error) {
+      message.error('配置失败');
+    }
+  };
+
+  const handleStartEvaluation = async () => {
+    if (!selectedPackage) return;
+    
+    Modal.confirm({
+      title: '启动评审',
+      content: `确定要对 "${selectedPackage.package_no}" 启动 AI 评审吗？`,
+      okText: '启动',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          // 这里需要调用启动评审的API
+          message.success('评审已启动');
+          fetchProject();
+        } catch (error) {
+          message.error('启动失败');
+        }
+      }
+    });
+  };
+
+  const handleItemSelect = (itemId: number, checked?: boolean) => {
+    setSelectedItemIds(prev => {
+      const isSelected = prev.includes(itemId);
+      const newChecked = checked !== undefined ? checked : !isSelected;
+      
+      if (newChecked) {
+        return [...prev, itemId];
+      } else {
+        return prev.filter(id => id !== itemId);
+      }
+    });
+  };
+
+  // 提取所有物资品类
+  const categories = Array.from(new Set(allItems.map(item => item.material_category).filter(Boolean) as string[]));
+
+  // 过滤后的评审项
+  const filteredItems = allItems.filter(item => {
+    const matchSearch = !searchText || 
+      item.item_name.toLowerCase().includes(searchText.toLowerCase()) ||
+      item.item_code.toLowerCase().includes(searchText.toLowerCase());
+    
+    const matchCategory = !categoryFilter || item.material_category === categoryFilter;
+    
+    return matchSearch && matchCategory;
+  });
+
+  if (!project) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        {loading ? '加载中...' : '项目不存在'}
+      </div>
+    );
+  }
+
+  const status = getStatusConfig(project.status);
+
+  return (
+    <div>
+      <Button
+        icon={<ArrowLeftOutlined />}
+        onClick={() => navigate('/projects')}
+        style={{ marginBottom: 16 }}
+      >
+        返回项目列表
+      </Button>
+
+      {/* 项目基本信息 */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <Title level={4} style={{ margin: '0 0 8px 0' }}>
+              <Space>
+                <BankOutlined />
+                {project.project_name}
+              </Space>
+            </Title>
+            <Space>
+              <Tag color="blue">{project.project_code}</Tag>
+              <Tag color={status.color}>{status.text}</Tag>
+              <Text type="secondary">项目 ID: #{project.id}</Text>
+            </Space>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchProject}
+              loading={loading}
+            >
+              刷新
+            </Button>
+          </div>
+        </div>
+
+        <Descriptions bordered column={2} size="small" style={{ marginTop: 16 }}>
+          <Descriptions.Item label="创建时间">
+            {project.created_at ? new Date(project.created_at).toLocaleString('zh-CN') : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="更新时间">
+            {project.updated_at ? new Date(project.updated_at).toLocaleString('zh-CN') : '-'}
+          </Descriptions.Item>
+          <Descriptions.Item label="标段数量" span={2}>
+            <Statistic value={project.section_count} suffix="个" />
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 16 }}>
+        <TabPane tab={<Space><FolderOpenOutlined /> 标段管理</Space>} key="section">
+          <Card>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+              {project.sections && project.sections.length > 0 ? (
+                project.sections.map((section) => (
+                  <div
+                    key={section.id}
+                    onClick={() => handleSectionChange(section)}
+                    style={{
+                      cursor: 'pointer',
+                      padding: '16px 24px',
+                      border: `2px solid ${selectedSection?.id === section.id ? '#1890ff' : '#e8e8e8'}`,
+                      borderRadius: 8,
+                      backgroundColor: selectedSection?.id === section.id ? '#e6f7ff' : '#fff',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FolderOpenOutlined style={{ color: '#1890ff' }} />
+                      <span style={{ fontWeight: 500 }}>{section.section_name}</span>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                      {section.section_code} · {section.package_count} 个包
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty description="暂无标段" />
+              )}
+            </div>
+
+            {/* 包列表 */}
+            {selectedSection && (
+              <div style={{ marginTop: 24 }}>
+                <Title level={5} style={{ marginBottom: 16 }}>
+                  {selectedSection.section_name} · 包列表
+                </Title>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {selectedSection.packages && selectedSection.packages.length > 0 ? (
+                    selectedSection.packages.map((pkg) => (
+                      <div
+                        key={pkg.id}
+                        onClick={() => handlePackageChange(pkg)}
+                        style={{
+                          cursor: 'pointer',
+                          padding: '12px 20px',
+                          border: `2px solid ${selectedPackage?.id === pkg.id ? '#52c41a' : '#e8e8e8'}`,
+                          borderRadius: 8,
+                          backgroundColor: selectedPackage?.id === pkg.id ? '#f6ffed' : '#fff',
+                          transition: 'all 0.3s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <InboxOutlined style={{ color: '#52c41a' }} />
+                          <span style={{ fontWeight: 500 }}>{pkg.package_no}</span>
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#8c8c8c' }}>
+                          {pkg.bidder_count} 家投标人 · {pkg.item_count} 个评审项
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <Empty description="暂无包" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 投标人列表 */}
+            {selectedPackage && (
+              <div style={{ marginTop: 24 }}>
+                <Title level={5} style={{ marginBottom: 16 }}>
+                  {selectedPackage.package_no} · 投标人列表
+                </Title>
+                <Table
+                  columns={[
+                    {
+                      title: '投标人名称',
+                      dataIndex: 'company_name',
+                      key: 'company_name',
+                      render: (name: string) => <Text strong>{name}</Text>
+                    },
+                    {
+                      title: '统一社会信用代码',
+                      dataIndex: 'social_credit_code',
+                      key: 'social_credit_code',
+                      render: (code: string) => code || '-'
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      render: () => (
+                        <Button size="small" icon={<EyeOutlined />}>
+                          详情
+                        </Button>
+                      )
+                    }
+                  ]}
+                  dataSource={selectedPackage.bidders}
+                  rowKey="id"
+                  pagination={false}
+                  locale={{ emptyText: <Empty description="暂无投标人" /> }}
+                />
+              </div>
+            )}
+          </Card>
+        </TabPane>
+
+        <TabPane tab={<Space><BarChartOutlined /> 评审管理</Space>} key="evaluation">
+          <Card>
+            <div style={{ marginBottom: 16 }}>
+              <Title level={5} style={{ margin: 0 }}>包列表</Title>
+              <Text type="secondary">选择包进行评审项配置和启动评审</Text>
+            </div>
+
+            {project.sections && project.sections.length > 0 ? (
+              project.sections.map((section) => (
+                <div key={section.id} style={{ marginBottom: 24 }}>
+                  <Title level={5} style={{ margin: '0 0 12px 0', color: '#666' }}>
+                      {section.section_name} ({section.section_code})
+                    </Title>
+                  {section.packages && section.packages.length > 0 ? (
+                    <Table
+                      columns={[
+                        {
+                          title: '包号',
+                          dataIndex: 'package_no',
+                          key: 'package_no',
+                          width: 120,
+                          render: (text: string, record: Package) => (
+                            <Space>
+                              <InboxOutlined style={{ color: '#52c41a' }} />
+                              <Text strong>{text}</Text>
+                            </Space>
+                          )
+                        },
+                        {
+                          title: '状态',
+                          dataIndex: 'status',
+                          key: 'status',
+                          width: 100,
+                          render: (status: string) => {
+                            const config = getStatusConfig(status);
+                            return <Tag color={config.color}>{config.text}</Tag>;
+                          }
+                        },
+                        {
+                          title: '投标人数量',
+                          dataIndex: 'bidder_count',
+                          key: 'bidder_count',
+                          width: 120,
+                          render: (count: number) => (
+                            <Tag color="blue">{count} 家</Tag>
+                          )
+                        },
+                        {
+                          title: '评审项数量',
+                          dataIndex: 'item_count',
+                          key: 'item_count',
+                          width: 120,
+                          render: (count: number) => (
+                            <Tag color={count > 0 ? 'green' : 'orange'}>{count} 个</Tag>
+                          )
+                        },
+                        {
+                          title: '操作',
+                          key: 'action',
+                          width: 220,
+                          render: (_: any, record: Package) => (
+                            <Space size="small">
+                              <Button
+                                size="small"
+                                icon={<SettingOutlined />}
+                                onClick={() => {
+                                  setSelectedPackage(record);
+                                  fetchPackageItems(record.id);
+                                  setShowConfigModal(true);
+                                }}
+                              >
+                                配置评审项
+                              </Button>
+                              <Button
+                                size="small"
+                                type="primary"
+                                icon={<PlayCircleOutlined />}
+                                onClick={() => {
+                                  setSelectedPackage(record);
+                                  fetchPackageItems(record.id);
+                                  handleStartEvaluation();
+                                }}
+                              >
+                                启动评审
+                              </Button>
+                            </Space>
+                          )
+                        }
+                      ]}
+                      dataSource={section.packages}
+                      rowKey="id"
+                      pagination={false}
+                      locale={{ emptyText: <Empty description="暂无包" /> }}
+                    />
+                  ) : (
+                    <Empty description="暂无包" />
+                  )}
+                </div>
+              ))
+            ) : (
+              <Empty description="暂无标段" />
+            )}
+
+            {/* 选中包的评审项详情 */}
+            {selectedPackage && (
+              <div style={{ marginTop: 32 }}>
+                <Divider />
+                <Title level={5} style={{ marginBottom: 16 }}>
+                  {selectedPackage.package_no} - 已配置的评审项
+                </Title>
+                {packageItems.length > 0 ? (
+                  <Table
+                    columns={[
+                      {
+                        title: '评审项编号',
+                        dataIndex: 'item_code',
+                        key: 'item_code',
+                        width: 150
+                      },
+                      {
+                        title: '评审项名称',
+                        dataIndex: 'item_name',
+                        key: 'item_name',
+                        width: 200
+                      },
+                      {
+                        title: '评分范围',
+                        key: 'score_range',
+                        width: 150,
+                        render: (_: any, record: PackageItemWithDetails) => (
+                          <span>{record.min_score} - {record.max_score} 分</span>
+                        )
+                      },
+                      {
+                        title: '权重',
+                        key: 'weight',
+                        width: 100,
+                        render: (_: any, record: PackageItemWithDetails) => (
+                          <Tag color="blue">
+                            {record.custom_weight || record.weight}
+                          </Tag>
+                        )
+                      },
+                      {
+                        title: '状态',
+                        dataIndex: 'is_required',
+                        key: 'is_required',
+                        width: 100,
+                        render: (is_required: boolean) => (
+                          is_required ? (
+                            <Tag color="green">必填</Tag>
+                          ) : (
+                            <Tag color="default">可选</Tag>
+                          )
+                        )
+                      },
+                      {
+                        title: '描述',
+                        dataIndex: 'item_description',
+                        key: 'item_description',
+                        render: (desc: string) => (
+                          <Tooltip title={desc || '无'}>
+                            <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
+                              {desc || '-'}
+                            </span>
+                          </Tooltip>
+                        )
+                      }
+                    ]}
+                    dataSource={packageItems}
+                    rowKey="id"
+                    pagination={{
+                      showSizeChanger: true,
+                      pageSizeOptions: ['10', '20', '50'],
+                      showTotal: (total) => `共 ${total} 个评审项`
+                    }}
+                  />
+                ) : (
+                  <div style={{ padding: 32, textAlign: 'center' }}>
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={
+                        <div>
+                          <Text type="secondary">该包尚未配置评审项</Text>
+                          <div style={{ marginTop: 16 }}>
+                            <Button icon={<PlusOutlined />} onClick={handleConfigItems}>
+                              配置评审项
+                            </Button>
+                          </div>
+                        </div>
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </TabPane>
+      </Tabs>
+
+      {/* 评审项配置模态框 */}
+      <Modal
+        title={`配置 "${selectedPackage?.package_no}" 的评审项`}
+        visible={showConfigModal}
+        width={800}
+        footer={null}
+        onCancel={() => setShowConfigModal(false)}
+      >
+        <div style={{ padding: 16 }}>
+          <Title level={5} style={{ marginBottom: 16 }}>选择评审项</Title>
+          
+          {/* 筛选区域 */}
+          <div style={{ marginBottom: 16, display: 'flex', gap: 16 }}>
+            <Input.Search
+              placeholder="搜索评审项名称或编号"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 250 }}
+              allowClear
+            />
+            <Select
+              placeholder="筛选物资品类"
+              value={categoryFilter || undefined}
+              onChange={setCategoryFilter}
+              style={{ width: 180 }}
+              allowClear
+            >
+              {categories.map(category => (
+                <Option key={category} value={category}>{category}</Option>
+              ))}
+            </Select>
+            <Button onClick={() => { setSearchText(''); setCategoryFilter(''); }}>
+              重置筛选
+            </Button>
+          </div>
+
+          <div style={{ maxHeight: 450, overflowY: 'auto' }}>
+            {filteredItems.length > 0 ? (
+              <Table
+                columns={[
+                  {
+                    title: (
+                      <Checkbox
+                        checked={selectedItemIds.length === filteredItems.length && filteredItems.length > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedItemIds(filteredItems.map(item => item.id));
+                          } else {
+                            setSelectedItemIds([]);
+                          }
+                        }}
+                      />
+                    ),
+                    dataIndex: 'selected',
+                    width: 60,
+                    render: (_: any, record: EvaluationItem) => (
+                      <Checkbox
+                        checked={selectedItemIds.includes(record.id)}
+                        onChange={(e) => handleItemSelect(record.id, e.target.checked)}
+                      />
+                    )
+                  },
+                  {
+                    title: '评审项编号',
+                    dataIndex: 'item_code',
+                    width: 120
+                  },
+                  {
+                    title: '评审项名称',
+                    dataIndex: 'item_name'
+                  },
+                  {
+                    title: '物资品类',
+                    dataIndex: 'material_category',
+                    width: 120,
+                    render: (category: string) => category || '-'
+                  },
+                  {
+                    title: '评分范围',
+                    width: 120,
+                    render: (_: any, record: EvaluationItem) => (
+                      <span>{record.min_score} - {record.max_score} 分</span>
+                    )
+                  },
+                  {
+                    title: '权重',
+                    dataIndex: 'weight',
+                    width: 80
+                  }
+                ]}
+                dataSource={filteredItems}
+                rowKey="id"
+                pagination={{
+                  defaultPageSize: 25,
+                  pageSizeOptions: ['25', '50', '100'],
+                  showSizeChanger: true,
+                  showTotal: (total) => `共 ${total} 条`,
+                  showQuickJumper: true
+                }}
+                onRow={(record) => ({
+                  onClick: () => {
+                    const isSelected = selectedItemIds.includes(record.id);
+                    handleItemSelect(record.id, !isSelected);
+                  }
+                })}
+              />
+            ) : (
+              <Empty description="暂无匹配的评审项" />
+            )}
+          </div>
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text type="secondary">
+              已选择 {selectedItemIds.length} 个评审项
+            </Text>
+            <Space>
+              <Button onClick={() => setShowConfigModal(false)}>取消</Button>
+              <Button type="primary" onClick={handleSaveConfig} icon={<SaveOutlined />}>
+                保存配置
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+export default ProjectDetail;

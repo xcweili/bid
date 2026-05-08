@@ -1,6 +1,6 @@
 """数据库模型 - 评审任务"""
-from sqlalchemy import Column, Integer, String, DateTime, Float, Text, ForeignKey, Table
-from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy import Column, Integer, String, DateTime, Float, Text, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from models.database import Base
 
@@ -21,6 +21,10 @@ class EvaluationTask(Base):
     processed_rules = Column(Integer, default=0)  # 已处理的规则数
     total_rules = Column(Integer, default=0)  # 总规则数
     
+    # 新增：与包的关联
+    package_id = Column(Integer, ForeignKey('packages.id'))
+    package = relationship('Package', backref='evaluation_tasks')
+    
     def to_dict(self):
         return {
             "id": self.id,
@@ -34,5 +38,6 @@ class EvaluationTask(Base):
             "ocr_status": self.ocr_status,
             "processed_rules": self.processed_rules,
             "total_rules": self.total_rules,
+            "package_id": self.package_id,
             "rule_ids": []  # 在 API 中单独查询
         }

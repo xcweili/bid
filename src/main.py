@@ -59,7 +59,7 @@ app.add_middleware(
 )
 
 # 路由导入
-from api import tasks, rules, results, companies, logs
+from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api
 
 # 注册路由
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务管理"])
@@ -67,6 +67,8 @@ app.include_router(rules.router, prefix="/api/rules", tags=["规则管理"])
 app.include_router(results.router, prefix="/api", tags=["结果查询"])
 app.include_router(companies.router, prefix="/api/companies", tags=["公司管理"])
 app.include_router(logs.router, prefix="/api/logs", tags=["日志管理"])
+app.include_router(project_import.router, prefix="/api", tags=["项目导入"])
+app.include_router(evaluation_items_api.router)
 
 
 @app.get("/")

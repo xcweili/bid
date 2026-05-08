@@ -12,6 +12,8 @@ import RuleConfig from './pages/RuleConfig';
 import ResultDetail from './pages/ResultDetail';
 import CompanyDetail from './pages/CompanyDetail';
 import Dashboard from './pages/Dashboard';
+import ProjectList from './pages/ProjectList';
+import ProjectDetail from './pages/ProjectDetail';
 
 import './App.css';
 
@@ -30,7 +32,7 @@ function App() {
       <BrowserRouter>
         <AppLayout>
           <Routes>
-            <Route path="/" element={<Navigate to="/tasks" replace />} />
+            <Route path="/" element={<Navigate to="/projects" replace />} />
             <Route path="/tasks" element={<TaskList />} />
             <Route path="/tasks/:id" element={<TaskDetail />} />
             <Route path="/tasks/:id/progress" element={<TaskProgress />} />
@@ -38,6 +40,8 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/results/:taskId" element={<ResultDetail />} />
             <Route path="/companies/:companyId" element={<CompanyDetail />} />
+            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
           </Routes>
         </AppLayout>
       </BrowserRouter>

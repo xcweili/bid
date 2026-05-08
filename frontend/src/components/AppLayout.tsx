@@ -8,7 +8,9 @@ import {
   UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
-  MenuUnfoldOutlined
+  MenuUnfoldOutlined,
+  ProjectOutlined,
+  BarChartOutlined
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './Layout.css';
@@ -29,14 +31,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
   const menuItems = [
     {
-      key: '/dashboard',
-      icon: <DashboardOutlined />,
-      label: '数据看板',
-    },
-    {
-      key: '/tasks',
-      icon: <FileTextOutlined />,
-      label: '评审任务',
+      key: '/projects',
+      icon: <ProjectOutlined />,
+      label: '项目管理',
     },
     {
       key: '/rules',

@@ -1,5 +1,6 @@
 """数据库模型 - 公司标书"""
-from sqlalchemy import Column, Integer, String, DateTime, Float
+from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from models.database import Base
 
@@ -19,6 +20,10 @@ class CompanyBid(Base):
     total_rules = Column(Integer, default=0)  # 总规则数
     created_at = Column(DateTime, default=datetime.now)
     
+    # 新增：与投标人的关联
+    bidder_id = Column(Integer, ForeignKey('bidders.id'))
+    bidder = relationship('Bidder', backref='company_bids')
+    
     def to_dict(self):
         return {
             "id": self.id,
@@ -30,5 +35,6 @@ class CompanyBid(Base):
             "ocr_status": self.ocr_status,
             "processed_rules": self.processed_rules,
             "total_rules": self.total_rules,
+            "bidder_id": self.bidder_id,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
