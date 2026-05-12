@@ -59,7 +59,7 @@ app.add_middleware(
 )
 
 # 路由导入
-from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api
+from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api, evaluation_results_api, bidders_api
 
 # 注册路由
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务管理"])
@@ -69,6 +69,8 @@ app.include_router(companies.router, prefix="/api/companies", tags=["公司管�
 app.include_router(logs.router, prefix="/api/logs", tags=["日志管理"])
 app.include_router(project_import.router, prefix="/api", tags=["项目导入"])
 app.include_router(evaluation_items_api.router)
+app.include_router(evaluation_results_api.router, prefix="/api", tags=["评审结果"])
+app.include_router(bidders_api.router, prefix="/api", tags=["投标人管理"])
 
 
 @app.get("/")
@@ -89,4 +91,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -14,6 +14,9 @@ import CompanyDetail from './pages/CompanyDetail';
 import Dashboard from './pages/Dashboard';
 import ProjectList from './pages/ProjectList';
 import ProjectDetail from './pages/ProjectDetail';
+import PackageEvaluationDetail from './pages/PackageEvaluationDetail';
+import EvaluationResults from './pages/EvaluationResults';
+import FileViewer from './pages/FileViewer';
 
 import './App.css';
 
@@ -42,6 +45,9 @@ function App() {
             <Route path="/companies/:companyId" element={<CompanyDetail />} />
             <Route path="/projects" element={<ProjectList />} />
             <Route path="/projects/:id" element={<ProjectDetail />} />
+            <Route path="/projects/:projectId/packages/:packageId/evaluation" element={<PackageEvaluationDetail />} />
+            <Route path="/evaluation-results" element={<EvaluationResults />} />
+            <Route path="/file-viewer" element={<FileViewer />} />
           </Routes>
         </AppLayout>
       </BrowserRouter>

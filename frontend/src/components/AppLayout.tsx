@@ -36,9 +36,19 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       label: '项目管理',
     },
     {
+      key: '/file-viewer',
+      icon: <FileTextOutlined />,
+      label: '文件查看',
+    },
+    {
       key: '/rules',
       icon: <SettingOutlined />,
       label: '规则配置',
+    },
+    {
+      key: '/evaluation-results',
+      icon: <BarChartOutlined />,
+      label: '评审结果',
     },
   ];
 

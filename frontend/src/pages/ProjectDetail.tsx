@@ -57,9 +57,10 @@ interface Project {
 const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const searchParams = new URLSearchParams(window.location.search);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('section');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'section');
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [allItems, setAllItems] = useState<EvaluationItem[]>([]);
@@ -68,6 +69,8 @@ const ProjectDetail: React.FC = () => {
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [bidderDetailVisible, setBidderDetailVisible] = useState(false);
+  const [selectedBidder, setSelectedBidder] = useState<Bidder | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -364,8 +367,15 @@ const ProjectDetail: React.FC = () => {
                     {
                       title: '操作',
                       key: 'action',
-                      render: () => (
-                        <Button size="small" icon={<EyeOutlined />}>
+                      render: (_: any, record: Bidder) => (
+                        <Button 
+                          size="small" 
+                          icon={<EyeOutlined />}
+                          onClick={() => {
+                            setSelectedBidder(record);
+                            setBidderDetailVisible(true);
+                          }}
+                        >
                           详情
                         </Button>
                       )
@@ -440,7 +450,7 @@ const ProjectDetail: React.FC = () => {
                         {
                           title: '操作',
                           key: 'action',
-                          width: 220,
+                          width: 280,
                           render: (_: any, record: Package) => (
                             <Space size="small">
                               <Button
@@ -453,6 +463,15 @@ const ProjectDetail: React.FC = () => {
                                 }}
                               >
                                 配置评审项
+                              </Button>
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() => {
+                                  window.location.href = `/projects/${project.id}/packages/${record.id}/evaluation`;
+                                }}
+                              >
+                                查看详情
                               </Button>
                               <Button
                                 size="small"
@@ -484,99 +503,6 @@ const ProjectDetail: React.FC = () => {
               <Empty description="暂无标段" />
             )}
 
-            {/* 选中包的评审项详情 */}
-            {selectedPackage && (
-              <div style={{ marginTop: 32 }}>
-                <Divider />
-                <Title level={5} style={{ marginBottom: 16 }}>
-                  {selectedPackage.package_no} - 已配置的评审项
-                </Title>
-                {packageItems.length > 0 ? (
-                  <Table
-                    columns={[
-                      {
-                        title: '评审项编号',
-                        dataIndex: 'item_code',
-                        key: 'item_code',
-                        width: 150
-                      },
-                      {
-                        title: '评审项名称',
-                        dataIndex: 'item_name',
-                        key: 'item_name',
-                        width: 200
-                      },
-                      {
-                        title: '评分范围',
-                        key: 'score_range',
-                        width: 150,
-                        render: (_: any, record: PackageItemWithDetails) => (
-                          <span>{record.min_score} - {record.max_score} 分</span>
-                        )
-                      },
-                      {
-                        title: '权重',
-                        key: 'weight',
-                        width: 100,
-                        render: (_: any, record: PackageItemWithDetails) => (
-                          <Tag color="blue">
-                            {record.custom_weight || record.weight}
-                          </Tag>
-                        )
-                      },
-                      {
-                        title: '状态',
-                        dataIndex: 'is_required',
-                        key: 'is_required',
-                        width: 100,
-                        render: (is_required: boolean) => (
-                          is_required ? (
-                            <Tag color="green">必填</Tag>
-                          ) : (
-                            <Tag color="default">可选</Tag>
-                          )
-                        )
-                      },
-                      {
-                        title: '描述',
-                        dataIndex: 'item_description',
-                        key: 'item_description',
-                        render: (desc: string) => (
-                          <Tooltip title={desc || '无'}>
-                            <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
-                              {desc || '-'}
-                            </span>
-                          </Tooltip>
-                        )
-                      }
-                    ]}
-                    dataSource={packageItems}
-                    rowKey="id"
-                    pagination={{
-                      showSizeChanger: true,
-                      pageSizeOptions: ['10', '20', '50'],
-                      showTotal: (total) => `共 ${total} 个评审项`
-                    }}
-                  />
-                ) : (
-                  <div style={{ padding: 32, textAlign: 'center' }}>
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={
-                        <div>
-                          <Text type="secondary">该包尚未配置评审项</Text>
-                          <div style={{ marginTop: 16 }}>
-                            <Button icon={<PlusOutlined />} onClick={handleConfigItems}>
-                              配置评审项
-                            </Button>
-                          </div>
-                        </div>
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            )}
           </Card>
         </TabPane>
       </Tabs>
@@ -703,6 +629,36 @@ const ProjectDetail: React.FC = () => {
             </Space>
           </div>
         </div>
+      </Modal>
+
+      {/* 投标人详情弹窗 */}
+      <Modal
+        title="投标人详情"
+        open={bidderDetailVisible}
+        onCancel={() => setBidderDetailVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setBidderDetailVisible(false)}>
+            关闭
+          </Button>
+        ]}
+        width={600}
+      >
+        {selectedBidder && (
+          <Descriptions bordered column={1} style={{ marginTop: 16 }}>
+            <Descriptions.Item label="投标人名称">
+              {selectedBidder.company_name}
+            </Descriptions.Item>
+            <Descriptions.Item label="统一社会信用代码">
+              {selectedBidder.social_credit_code || '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="所属包">
+              {selectedPackage?.package_no || '-'}
+            </Descriptions.Item>
+            <Descriptions.Item label="所属标段">
+              {selectedSection?.section_name || '-'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
       </Modal>
     </div>
   );
