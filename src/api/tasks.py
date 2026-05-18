@@ -196,6 +196,53 @@ async def start_task(task_id: int, background_tasks: BackgroundTasks):
         if not task_rules:
             raise HTTPException(status_code=400, detail="任务没有关联评审规则，请先配置规则")
         
+        # 如果任务关联了包，检查包级别的文件解析状态
+        if task.package_id:
+            from models.bidder_files import BidderFile, PackageFileUpload
+            
+            # 检查包的文件上传记录状态
+            latest_upload = db.query(PackageFileUpload).filter(
+                PackageFileUpload.package_id == task.package_id
+            ).order_by(PackageFileUpload.created_at.desc()).first()
+            
+            if latest_upload and latest_upload.status != 'completed':
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"包文件解析尚未完成，当前状态：{latest_upload.status}"
+                )
+            
+            # 检查所有投标人的文件是否都已上传并解析完成
+            bidders = db.query(Bidder).filter(Bidder.package_id == task.package_id).all()
+            bidder_ids = [b.id for b in bidders]
+            
+            if bidder_ids:
+                # 检查是否有投标人没有文件
+                bidders_without_files = []
+                for bidder in bidders:
+                    file_count = db.query(BidderFile).filter(
+                        BidderFile.bidder_id == bidder.id
+                    ).count()
+                    if file_count == 0:
+                        bidders_without_files.append(bidder.company_name)
+                
+                if bidders_without_files:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"以下投标人尚未上传文件：{', '.join(bidders_without_files)}"
+                    )
+                
+                # 检查是否有文件解析失败
+                failed_files = db.query(BidderFile).filter(
+                    BidderFile.bidder_id.in_(bidder_ids),
+                    BidderFile.parse_status == 'failed'
+                ).all()
+                
+                if failed_files:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"部分文件解析失败（{len(failed_files)} 个），请检查后重试"
+                    )
+        
         # 检查任务状态
         if task.status == 'processing':
             raise HTTPException(

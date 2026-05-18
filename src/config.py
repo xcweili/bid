@@ -33,9 +33,8 @@ class Config:
     @classmethod
     def init_app(cls):
         """初始化应用目录"""
-        os.makedirs(cls.UPLOAD_DIR, exist_ok=True)
-        os.makedirs(cls.TASKS_DIR, exist_ok=True)
-        os.makedirs(cls.RULES_DIR, exist_ok=True)
+        # 不再自动创建 rules、tasks、uploads 目录
+        # 这些目录由实际业务需求时按需创建
 
 
 # 创建配置实例

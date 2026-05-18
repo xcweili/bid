@@ -269,9 +269,6 @@ const ProjectDetail: React.FC = () => {
           <Descriptions.Item label="更新时间">
             {project.updated_at ? new Date(project.updated_at).toLocaleString('zh-CN') : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="标段数量" span={2}>
-            <Statistic value={project.section_count} suffix="个" />
-          </Descriptions.Item>
         </Descriptions>
       </Card>
 

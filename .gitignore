@@ -64,5 +64,18 @@ htmlcov/
 .env
 .env.local
 
-# Data files (contains uploaded files and database)
-src/data/
+# Protocol interfaces
+protocol_interfaces/
+协议接口
+
+# Rules
+rules/
+规则
+
+# Skills
+skills/
+
+.docx
+.pdf
+.md
+.zip

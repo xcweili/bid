@@ -17,6 +17,13 @@ interface Bidder {
   company_name: string;
   social_credit_code: string;
   parse_status: string;
+  package_id: number;
+  package_no?: string;
+  section_id?: number;
+  section_name?: string;
+  project_id?: number;
+  project_name?: string;
+  project_code?: string;
 }
 
 interface Package {
@@ -48,62 +55,85 @@ interface FileNode {
 
 const FileViewer: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [allBidders, setAllBidders] = useState<Bidder[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [selectedSection, setSelectedSection] = useState<number | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
-  const [selectedBidder, setSelectedBidder] = useState<number | null>(null);
   const [currentSections, setCurrentSections] = useState<Section[]>([]);
   const [currentPackages, setCurrentPackages] = useState<Package[]>([]);
-  const [currentBidders, setCurrentBidders] = useState<Bidder[]>([]);
   const [searchText, setSearchText] = useState('');
   const [fileTreeVisible, setFileTreeVisible] = useState(false);
   const [fileTreeData, setFileTreeData] = useState<FileNode[]>([]);
   const [selectedBidderInfo, setSelectedBidderInfo] = useState<Bidder | null>(null);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProject) {
-      handleProjectChange(projects[0].id);
-    }
-  }, [projects, selectedProject]);
-
+  // 获取所有项目数据
   const fetchProjects = async () => {
     setLoading(true);
     try {
       const response = await fetch('/api/projects');
       const data = await response.json();
       setProjects(data);
+      return data;
     } catch (error) {
       message.error('获取项目列表失败');
+      return [];
     } finally {
       setLoading(false);
     }
   };
 
+  // 扁平化所有投标人数据
+  const flattenBidders = (projectsData: Project[]): Bidder[] => {
+    const bidders: Bidder[] = [];
+    projectsData.forEach(project => {
+      project.sections.forEach(section => {
+        section.packages.forEach(pkg => {
+          pkg.bidders.forEach(bidder => {
+            bidders.push({
+              ...bidder,
+              package_no: pkg.package_no,
+              section_name: section.section_name,
+              project_id: project.id,
+              project_name: project.project_name,
+              project_code: project.project_code
+            });
+          });
+        });
+      });
+    });
+    return bidders;
+  };
+
+  useEffect(() => {
+    fetchProjects().then(data => {
+      const flattened = flattenBidders(data);
+      setAllBidders(flattened);
+      // 不默认选中任何筛选条件，显示所有数据
+    });
+  }, []);
+
   const handleProjectChange = (value: number | null) => {
     setSelectedProject(value);
     setSelectedSection(null);
     setSelectedPackage(null);
-    setSelectedBidder(null);
     if (value) {
       const project = projects.find(p => p.id === value);
       setCurrentSections(project?.sections || []);
+      // 不默认选中标段
     } else {
       setCurrentSections([]);
+      setCurrentPackages([]);
     }
   };
 
   const handleSectionChange = (value: number | null) => {
     setSelectedSection(value);
     setSelectedPackage(null);
-    setSelectedBidder(null);
     if (value) {
       const section = currentSections.find(s => s.id === value);
       setCurrentPackages(section?.packages || []);
+      // 不默认选中包
     } else {
       setCurrentPackages([]);
     }
@@ -111,23 +141,6 @@ const FileViewer: React.FC = () => {
 
   const handlePackageChange = (value: number | null) => {
     setSelectedPackage(value);
-    setSelectedBidder(null);
-    if (value) {
-      const pkg = currentPackages.find(p => p.id === value);
-      setCurrentBidders(pkg?.bidders || []);
-    } else {
-      setCurrentBidders([]);
-    }
-  };
-
-  const handleBidderChange = (value: number | null) => {
-    setSelectedBidder(value);
-    if (value) {
-      const bidder = currentBidders.find(b => b.id === value);
-      setSelectedBidderInfo(bidder || null);
-    } else {
-      setSelectedBidderInfo(null);
-    }
   };
 
   const getStatusConfig = (status: string) => {
@@ -143,14 +156,14 @@ const FileViewer: React.FC = () => {
   const handleReParse = async (bidderId: number) => {
     setLoading(true);
     try {
-      // 调用重新解析接口
       const response = await fetch(`/api/bidders/${bidderId}/reparse`, {
         method: 'POST'
       });
       if (response.ok) {
         message.success('重新解析任务已下发');
-        // 刷新数据
-        fetchProjects();
+        fetchProjects().then(data => {
+          setAllBidders(flattenBidders(data));
+        });
       } else {
         message.error('重新解析失败');
       }
@@ -161,13 +174,20 @@ const FileViewer: React.FC = () => {
     }
   };
 
-  const handleViewFiles = async (bidderId: number) => {
+  const handleViewFiles = async (bidder: Bidder) => {
     setLoading(true);
+    setSelectedBidderInfo(bidder);
     try {
-      // 调用获取文件树接口
-      const response = await fetch(`/api/bidders/${bidderId}/files`);
-      const data = await response.json();
-      setFileTreeData(data);
+      let fileTree: any[] = [];
+      if (bidder.package_id) {
+        const response = await fetch(`/api/packages/${bidder.package_id}/bidders/${bidder.id}/file-tree`);
+        if (response.ok) {
+          const data = await response.json();
+          // API返回的是 {bidder_id, company_name, file_tree}，需要提取file_tree字段
+          fileTree = data.file_tree || [];
+        }
+      }
+      setFileTreeData(fileTree);
       setFileTreeVisible(true);
     } catch (error) {
       message.error('获取文件列表失败');
@@ -176,19 +196,38 @@ const FileViewer: React.FC = () => {
     }
   };
 
-  const filteredBidders = currentBidders.filter(bidder => {
-    if (!searchText) return true;
-    return bidder.company_name.toLowerCase().includes(searchText.toLowerCase()) ||
-           bidder.social_credit_code.toLowerCase().includes(searchText.toLowerCase());
-  });
+  // 筛选投标人数据
+  const getFilteredBidders = () => {
+    let filtered = [...allBidders];
 
-  if (loading) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <div className="loading" />
-      </div>
-    );
-  }
+    if (selectedProject) {
+      // 只按项目筛选
+      filtered = filtered.filter(b => b.project_id === selectedProject);
+      
+      if (selectedSection) {
+        // 按标段筛选
+        const packageIds = currentPackages.map(p => p.id);
+        filtered = filtered.filter(b => packageIds.includes(b.package_id));
+        
+        if (selectedPackage) {
+          // 按包筛选
+          filtered = filtered.filter(b => b.package_id === selectedPackage);
+        }
+      }
+    }
+
+    if (searchText) {
+      const searchLower = searchText.toLowerCase();
+      filtered = filtered.filter(bidder =>
+        bidder.company_name.toLowerCase().includes(searchLower) ||
+        (bidder.social_credit_code && bidder.social_credit_code.toLowerCase().includes(searchLower))
+      );
+    }
+
+    return filtered;
+  };
+
+  const filteredBidders = getFilteredBidders();
 
   return (
     <div>
@@ -200,7 +239,7 @@ const FileViewer: React.FC = () => {
         </div>
         <Button
           icon={<RestOutlined />}
-          onClick={fetchProjects}
+          onClick={() => fetchProjects().then(data => setAllBidders(flattenBidders(data)))}
         >
           刷新
         </Button>
@@ -232,7 +271,7 @@ const FileViewer: React.FC = () => {
             ))}
           </Select>
 
-          {selectedProject && (
+          {currentSections.length > 0 && (
             <Select
               placeholder="筛选标段"
               value={selectedSection || undefined}
@@ -248,33 +287,17 @@ const FileViewer: React.FC = () => {
             </Select>
           )}
 
-          {selectedSection && (
+          {currentPackages.length > 0 && (
             <Select
               placeholder="筛选包"
               value={selectedPackage || undefined}
-              onChange={(value) => handlePackageChange(value || null)}
+              onChange={(value) => setSelectedPackage(value || null)}
               style={{ width: 150 }}
               allowClear
             >
               {currentPackages.map(pkg => (
                 <Option key={pkg.id} value={pkg.id}>
                   {pkg.package_no}
-                </Option>
-              ))}
-            </Select>
-          )}
-
-          {selectedPackage && (
-            <Select
-              placeholder="筛选公司"
-              value={selectedBidder || undefined}
-              onChange={(value) => handleBidderChange(value || null)}
-              style={{ width: 200 }}
-              allowClear
-            >
-              {currentBidders.map(bidder => (
-                <Option key={bidder.id} value={bidder.id}>
-                  {bidder.company_name}
                 </Option>
               ))}
             </Select>
@@ -289,41 +312,38 @@ const FileViewer: React.FC = () => {
           <Title level={4} style={{ margin: 0 }}>投标人文件解析状态</Title>
         </div>
 
-        {filteredBidders.length > 0 ? (
+        {allBidders.length > 0 ? (
           <Table
             columns={[
               {
                 title: '项目',
                 key: 'project',
-                width: 150,
-                render: () => {
-                  const project = projects.find(p => p.id === selectedProject);
-                  return <Tag color="blue">{project?.project_name || '-'}</Tag>;
-                }
+                width: 180,
+                render: (_: any, record: Bidder) => (
+                  <Tag color="blue">{record.project_name || '-'}</Tag>
+                )
               },
               {
                 title: '标段',
                 key: 'section',
                 width: 150,
-                render: () => {
-                  const section = currentSections.find(s => s.id === selectedSection);
-                  return <Tag color="purple">{section?.section_name || '-'}</Tag>;
-                }
+                render: (_: any, record: Bidder) => (
+                  <Tag color="purple">{record.section_name || '-'}</Tag>
+                )
               },
               {
                 title: '包',
                 key: 'package',
                 width: 100,
-                render: () => {
-                  const pkg = currentPackages.find(p => p.id === selectedPackage);
-                  return <Tag color="green">{pkg?.package_no || '-'}</Tag>;
-                }
+                render: (_: any, record: Bidder) => (
+                  <Tag color="green">{record.package_no || '-'}</Tag>
+                )
               },
               {
                 title: '投标公司',
                 dataIndex: 'company_name',
                 key: 'company_name',
-                width: 200
+                width: 220
               },
               {
                 title: '统一社会信用代码',
@@ -334,10 +354,10 @@ const FileViewer: React.FC = () => {
               },
               {
                 title: '解析状态',
-                dataIndex: 'parse_status',
                 key: 'parse_status',
-                width: 120,
-                render: (status: string) => {
+                width: 130,
+                render: (_: any, record: Bidder) => {
+                  const status = record.parse_status || 'pending';
                   const config = getStatusConfig(status);
                   const colorMap: Record<string, string> = {
                     success: '#52c41a',
@@ -354,31 +374,32 @@ const FileViewer: React.FC = () => {
                 }
               },
               {
-                title: '操作',
-                key: 'action',
-                width: 200,
+                title: '解析进度',
+                key: 'progress',
+                width: 150,
                 render: (_: any, record: Bidder) => (
-                  <Space size="small">
-                    <Button
-                      size="small"
-                      icon={<RestOutlined />}
-                      onClick={() => handleReParse(record.id)}
-                    >
-                      重新解析
-                    </Button>
-                    <Button
-                      size="small"
-                      icon={<EyeOutlined />}
-                      onClick={() => handleViewFiles(record.id)}
-                    >
-                      查看文件
-                    </Button>
-                  </Space>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span>{record.converted_count || 0}/{record.total_pdf_count || 0}</span>
+                      <span>{record.total_pdf_count > 0 ? Math.round(((record.converted_count || 0) / record.total_pdf_count) * 100) : 0}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: 6, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${record.total_pdf_count > 0 ? ((record.converted_count || 0) / record.total_pdf_count) * 100 : 0}%`,
+                          height: '100%',
+                          backgroundColor: record.converted_count === record.total_pdf_count && record.total_pdf_count > 0 ? '#52c41a' : '#1890ff',
+                          borderRadius: 3
+                        }}
+                      />
+                    </div>
+                  </div>
                 )
-              }
+              },
             ]}
             dataSource={filteredBidders}
             rowKey="id"
+            loading={loading}
             pagination={{
               defaultPageSize: 25,
               pageSizeOptions: ['25', '50', '100'],
@@ -389,7 +410,7 @@ const FileViewer: React.FC = () => {
             locale={{ emptyText: <Empty description="暂无投标人" /> }}
           />
         ) : (
-          <Empty description="请选择项目、标段、包来查看投标人列表" />
+          <Empty description="暂无投标人数据" />
         )}
       </Card>
 
@@ -413,14 +434,14 @@ const FileViewer: React.FC = () => {
             </Title>
           </div>
         )}
-        {fileTreeData.length > 0 ? (
+        {fileTreeData && fileTreeData.length > 0 ? (
           <Tree
             defaultExpandAll
             showLine
             treeData={fileTreeData.map(node => ({
               title: (
                 <Space>
-                  {node.isLeaf ? <FileTextOutlined style={{ color: '#1890ff' }} /> : <FolderOpenOutlined style={{ color: '#faad14' }} />}
+                  {node.isLeaf || node.type === 'file' ? <FileTextOutlined style={{ color: '#1890ff' }} /> : <FolderOpenOutlined style={{ color: '#faad14' }} />}
                   <span>{node.title}</span>
                 </Space>
               ),
@@ -428,7 +449,6 @@ const FileViewer: React.FC = () => {
               children: node.children
             }))}
             onSelect={(selectedKeys) => {
-              // 可以在这里添加点击文件查看内容的逻辑
               message.info(`选中文件: ${selectedKeys[0]}`);
             }}
           />
