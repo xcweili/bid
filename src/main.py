@@ -44,9 +44,9 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """应用启动时初始化数据库"""
-    from models.database import engine, Base
+    from models.database import init_db
     # 创建所有表
-    Base.metadata.create_all(bind=engine)
+    init_db()
     logger.info("应用启动成功")
 
 # CORS 配置
@@ -59,7 +59,7 @@ app.add_middleware(
 )
 
 # 路由导入
-from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api, evaluation_results_api, bidders_api
+from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api, evaluation_results_api, bidders_api, package_files_api
 
 # 注册路由
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务管理"])
@@ -71,6 +71,7 @@ app.include_router(project_import.router, prefix="/api", tags=["项目导入"])
 app.include_router(evaluation_items_api.router)
 app.include_router(evaluation_results_api.router, prefix="/api", tags=["评审结果"])
 app.include_router(bidders_api.router, prefix="/api", tags=["投标人管理"])
+app.include_router(package_files_api.router, tags=["包文件管理"])
 
 
 @app.get("/")

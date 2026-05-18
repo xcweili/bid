@@ -1,0 +1,10 @@
+{
+  "name": "green_low_carbon_skill",
+  "description": "绿色低碳生产及绿色回收评审项技能 - 从投标文件中提取与评审规则相关的原文描述信息",
+  "version": "1.0.0",
+  "category": "evaluation_item",
+  "rule_file": "规则/绿色低碳生产及绿色回收（0-4）.md",
+  "max_score": 4,
+  "input_type": "company_bid_path",
+  "output_type": "document_references"
+}

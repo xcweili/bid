@@ -42,6 +42,7 @@ def init_db():
     from models.evaluation_results import EvaluationResult
     from models.project_structure import Project, Section, Package, Bidder
     from models.evaluation_items import EvaluationItem, PackageItem
+    from models.bidder_files import BidderFile, PackageFileUpload
     
     Base.metadata.create_all(bind=engine)
 

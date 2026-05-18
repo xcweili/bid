@@ -278,6 +278,30 @@ class OCRService:
             pdf_document.close()
             logger.info(f"PDF {pdf_path} 共提取 {len(image_list)} 张图片")
             
+            # 如果没有提取到图片，尝试将PDF页面渲染为图片（处理扫描版PDF）
+            if len(image_list) == 0:
+                logger.info(f"未提取到图片，尝试将PDF页面渲染为图片：{pdf_path}")
+                pdf_document = fitz.open(pdf_path)
+                
+                for page_num, page in enumerate(pdf_document, start=1):
+                    # 将页面渲染为图片
+                    pix = page.get_pixmap(dpi=300)
+                    img_filename = f"page{page_num}_render.png"
+                    img_path = str(output_dir / img_filename)
+                    
+                    pix.save(img_path)
+                    
+                    image_list.append({
+                        "image_path": img_path,
+                        "page_num": page_num,
+                        "file_name": img_filename
+                    })
+                    
+                    logger.info(f"渲染PDF页面为图片：{img_filename} (第{page_num}页)")
+                
+                pdf_document.close()
+                logger.info(f"PDF {pdf_path} 共渲染 {len(image_list)} 张页面图片")
+            
         except Exception as e:
             logger.error(f"提取 PDF 图片失败：{e}")
         
@@ -295,9 +319,10 @@ class OCRService:
         """
         file_path = Path(file_path)
         suffix = file_path.suffix.lower()
+        output_path = Path(output_dir)
         
         # 创建临时目录
-        temp_dir = output_dir / f"{file_path.stem}_images"
+        temp_dir = output_path / f"{file_path.stem}_images"
         temp_dir.mkdir(parents=True, exist_ok=True)
         
         image_results = []

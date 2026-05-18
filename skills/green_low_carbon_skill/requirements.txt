@@ -1,0 +1,31 @@
+# 绿色低碳生产及绿色回收评审技能
+
+本Skill可以在独立环境运行，仅依赖Python标准库。
+
+## 默认依赖
+- Python 3.7+
+- 无需额外依赖包
+
+## 可选增强（如果需要解析PDF/DOCX）
+- PyMuPDF (PDF解析)
+- python-docx (DOCX解析)
+
+安装可选依赖：
+```bash
+pip install PyMuPDF python-docx
+```
+
+## 使用示例
+
+```python
+from skills.green_low_carbon_skill.extractor import GreenLowCarbonExtractor
+
+extractor = GreenLowCarbonExtractor()
+result = extractor.extract("path/to/company/bid/folder")
+
+print("评审规则：", result["评审规则"])
+for ref in result["文档引用"]:
+    print(f"\n文档: {ref['文档名称']}")
+    print(f"页码: {ref['页码']}")
+    print(f"原文: {ref['原文内容']}")
+```
