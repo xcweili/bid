@@ -63,3 +63,16 @@ htmlcov/
 # Environment variables
 .env
 .env.local
+
+# Data files (contains uploaded files and database)
+src/data/
+
+# Protocol interfaces
+protocol_interfaces/
+
+
+# Rules
+rules/
+
+# Skills
+skills/
