@@ -1,4 +1,4 @@
-"""AI 评审服务 - 增强版，支持 OCR 和图片处理"""
+"""AI 评审服务 - 增强版，支持 OCR 和图片处�?""
 import os
 import json
 import zipfile
@@ -63,13 +63,13 @@ class TempFileManager:
                     logger.debug(f"已删除临时文件：{filepath}")
             except Exception as e:
                 logger.warning(f"删除临时文件失败 {filepath}: {e}")
-        logger.info(f"共清理 {len(self.temp_files)} 个临时文件")
+        logger.info(f"共清�?{len(self.temp_files)} 个临时文�?)
 
 
 class DocumentParser:
     @staticmethod
     def _convert_doc_to_docx(doc_path: str, temp_manager: TempFileManager) -> Optional[str]:
-        """使用 win32com 将 .doc 转换为 .docx"""
+        """使用 win32com �?.doc 转换�?.docx"""
         try:
             import win32com.client as win32
 
@@ -78,14 +78,14 @@ class DocumentParser:
             temp_docx_name = f"{uuid.uuid4().hex}.docx"
             temp_docx_path = os.path.join(temp_dir, temp_docx_name)
 
-            # 尝试使用 WPS 或 Word
+            # 尝试使用 WPS �?Word
             try:
                 # 优先使用 WPS
                 app = win32.Dispatch("Kwps.Application")
                 logger.debug("使用 WPS Office")
             except Exception:
                 try:
-                    # fallback 到 Word
+                    # fallback �?Word
                     app = win32.Dispatch("Word.Application")
                     logger.debug("使用 Microsoft Word")
                 except Exception as e:
@@ -97,7 +97,7 @@ class DocumentParser:
             # 打开文档
             doc = app.Documents.Open(doc_path)
 
-            # 保存为 docx 格式
+            # 保存�?docx 格式
             try:
                 # WPS 使用 SaveAs2
                 doc.SaveAs2(temp_docx_path, FileFormat=12)  # 12 = wdFormatDocumentDefault
@@ -112,16 +112,16 @@ class DocumentParser:
             final_docx_path = temp_manager.create_temp_file(".docx")
             shutil.move(temp_docx_path, final_docx_path)
 
-            logger.info(f"已将 .doc 转换为 .docx: {final_docx_path}")
+            logger.info(f"已将 .doc 转换�?.docx: {final_docx_path}")
             return final_docx_path
 
         except Exception as e:
-            logger.error(f"转换 .doc 到 .docx 失败：{e}")
+            logger.error(f"转换 .doc �?.docx 失败：{e}")
             return None
 
     @staticmethod
     def _extract_images_from_docx(docx_path: str, temp_manager: TempFileManager) -> List[str]:
-        """从 docx 文件中提取图片"""
+        """�?docx 文件中提取图�?""
         image_paths = []
 
         try:
@@ -141,7 +141,7 @@ class DocumentParser:
                     image_paths.append(img_path)
                     logger.info(f"提取图片：{img_path}")
         except zipfile.BadZipFile as e:
-            logger.error(f"文件不是有效的 zip/docx 格式：{e}")
+            logger.error(f"文件不是有效�?zip/docx 格式：{e}")
         except Exception as e:
             logger.error(f"提取图片失败：{e}")
 
@@ -149,7 +149,7 @@ class DocumentParser:
 
     @staticmethod
     def extract_images(doc_path: str, temp_manager: TempFileManager) -> List[str]:
-        """从文档中提取所有图片"""
+        """从文档中提取所有图�?""
         image_paths = []
         doc_path = Path(doc_path).absolute()
         suffix = doc_path.suffix.lower()
@@ -160,12 +160,12 @@ class DocumentParser:
                 image_paths = DocumentParser._extract_images_from_docx(str(doc_path), temp_manager)
 
             elif suffix == '.doc':
-                # 尝试转换 .doc 到 .docx
+                # 尝试转换 .doc �?.docx
                 docx_path = DocumentParser._convert_doc_to_docx(str(doc_path), temp_manager)
                 if docx_path:
                     image_paths = DocumentParser._extract_images_from_docx(docx_path, temp_manager)
                 else:
-                    logger.warning("无法转换 .doc 文件，请手动转换为 .docx 格式")
+                    logger.warning("无法转换 .doc 文件，请手动转换�?.docx 格式")
 
             else:
                 logger.error(f"不支持的文件格式：{suffix}")
@@ -177,16 +177,15 @@ class DocumentParser:
 
 
 class AIEvaluator:
-    """AI 评审器 - 支持文档解析、OCR 和智能评分"""
+    """AI 评审�?- 支持文档解析、OCR 和智能评�?""
 
     def __init__(self):
         self.llm = LLMService()
         self.ocr = OCRService()
         self.temp_base = Path("temp/ocr")
-        self.temp_base.mkdir(parents=True, exist_ok=True)
 
     def read_company_files(self, company_folder: str, source_files: List[str]) -> Dict[str, Any]:
-        """读取公司文件夹中的指定文件内容，支持 OCR 和 md 文档"""
+        """读取公司文件夹中的指定文件内容，支持 OCR �?md 文档"""
         company_path = Path(company_folder)
         if not company_path.exists():
             logger.warning(f"公司文件夹不存在：{company_folder}")
@@ -201,7 +200,7 @@ class AIEvaluator:
         missing_files = []
 
         for file_pattern in source_files:
-            # 查找匹配的文件
+            # 查找匹配的文�?
             matched_files = list(company_path.rglob(file_pattern))
             
             if not matched_files:
@@ -221,8 +220,8 @@ class AIEvaluator:
                 if md_path.exists():
                     try:
                         content = md_path.read_text(encoding='utf-8')
-                        # 检查 md 文档中是否有错误信息
-                        if '[读取失败：' in content or 'OCR 识别失败' in content:
+                        # 检�?md 文档中是否有错误信息
+                        if '[读取失败�? in content or 'OCR 识别失败' in content:
                             errors.append(f"文件解析有误：{file_path.name}")
                         all_content.append(f"=== 文件：{md_path.name} ===\n{content}\n")
                         logger.info(f"读取 md 文档：{md_path}")
@@ -246,7 +245,7 @@ class AIEvaluator:
         }
 
     def _read_file_with_ocr(self, file_path: str) -> str:
-        """读取文件内容，支持文档图片 OCR"""
+        """读取文件内容，支持文档图�?OCR"""
         file_path = Path(file_path)
         suffix = file_path.suffix.lower()
         source_dir = str(file_path.parent)
@@ -265,7 +264,7 @@ class AIEvaluator:
                 return self._read_excel_file(file_path)
 
             elif suffix in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-                # 直接对图片进行 OCR
+                # 直接对图片进�?OCR
                 return self.ocr.ocr_image(str(file_path))
 
             else:
@@ -277,7 +276,7 @@ class AIEvaluator:
             return f"[读取失败：{str(e)}]"
 
     def _read_doc_with_ocr(self, doc_path: str, source_dir: str) -> str:
-        """读取 Word 文档内容，包括图片 OCR"""
+        """读取 Word 文档内容，包括图�?OCR"""
         temp_manager = TempFileManager(source_dir)
         doc_info = DocumentInfo(file_path=doc_path)
 
@@ -286,9 +285,9 @@ class AIEvaluator:
             image_paths = DocumentParser.extract_images(doc_path, temp_manager)
             
             doc_info.total_pages = len(image_paths)
-            logger.info(f"文档 {Path(doc_path).name} 共 {len(image_paths)} 张图片")
+            logger.info(f"文档 {Path(doc_path).name} �?{len(image_paths)} 张图�?)
 
-            # 对每张图片进行 OCR
+            # 对每张图片进�?OCR
             for idx, img_path in enumerate(image_paths):
                 try:
                     ocr_text = self.ocr.ocr_image(img_path)
@@ -301,14 +300,14 @@ class AIEvaluator:
                         image_path=img_path
                     ))
 
-                    doc_info.raw_extracted_text += f"\n--- 第 {idx + 1} 页 ({page_type}) ---\n{ocr_text}\n"
+                    doc_info.raw_extracted_text += f"\n--- �?{idx + 1} �?({page_type}) ---\n{ocr_text}\n"
 
                     # 清理临时图片
                     if os.path.exists(img_path):
                         os.remove(img_path)
 
                 except Exception as e:
-                    logger.error(f"处理第 {idx + 1} 页失败：{e}")
+                    logger.error(f"处理�?{idx + 1} 页失败：{e}")
                     if os.path.exists(img_path):
                         os.remove(img_path)
 
@@ -335,7 +334,7 @@ class AIEvaluator:
         return "content"
 
     def _read_pdf_with_ocr(self, file_path: Path) -> str:
-        """读取 PDF 文件，支持 OCR"""
+        """读取 PDF 文件，支�?OCR"""
         try:
             from pdf2image import convert_from_path
             import tempfile
@@ -350,13 +349,13 @@ class AIEvaluator:
                     
                     ocr_text = self.ocr.ocr_image(str(temp_img_path))
                     if ocr_text:
-                        all_text.append(f"--- 第 {idx+1} 页 ---\n{ocr_text}")
+                        all_text.append(f"--- �?{idx+1} �?---\n{ocr_text}")
                 
                 return "\n\n".join(all_text)
                 
         except ImportError:
-            logger.warning("pdf2image 未安装，PDF OCR 不可用")
-            return "[PDF OCR: 需要安装 pdf2image 依赖]"
+            logger.warning("pdf2image 未安装，PDF OCR 不可�?)
+            return "[PDF OCR: 需要安�?pdf2image 依赖]"
         except Exception as e:
             logger.error(f"PDF OCR 失败：{e}")
             return f"[PDF OCR 失败：{str(e)}]"
@@ -373,46 +372,46 @@ class AIEvaluator:
 
     def evaluate_rule_item(self, rule_content: str, item_config: Dict, 
                           document_content: str) -> Dict:
-        """评估单个评审项"""
-        item_name = item_config.get('item_name', '未知评审项')
+        """评估单个评审�?""
+        item_name = item_config.get('item_name', '未知评审�?)
         max_score = item_config.get('max_score', 10)
         scoring_criteria = item_config.get('scoring_criteria', rule_content)
 
-        prompt = f"""你是一位专业的招标评审专家。请根据以下评审标准和投标文件内容，给出客观、公正的评分。
+        prompt = f"""你是一位专业的招标评审专家。请根据以下评审标准和投标文件内容，给出客观、公正的评分�?
 
-【评审项】
+【评审项�?
 {item_name}
 
-【满分】
-{max_score} 分
+【满分�?
+{max_score} �?
 
-【评审标准】
+【评审标准�?
 {scoring_criteria}
 
-【投标文件内容】
+【投标文件内容�?
 {document_content if document_content else "[未提供相关文件内容]"}
 
-请按照以下 JSON 格式输出评分结果：
+请按照以�?JSON 格式输出评分结果�?
 {{
-    "score": 分数（0-{max_score}之间的数字）,
+    "score": 分数�?-{max_score}之间的数字）,
     "reason": "详细的评分理由，说明打分依据",
-    "strengths": ["优势点 1", "优势点 2"],
-    "weaknesses": ["不足点 1", "不足点 2"],
-    "evidence": "从投标文件中引用的具体证据内容",
-    "confidence": 置信度（0.0-1.0）
+    "strengths": ["优势�?1", "优势�?2"],
+    "weaknesses": ["不足�?1", "不足�?2"],
+    "evidence": "从投标文件中引用的具体证据内�?,
+    "confidence": 置信度（0.0-1.0�?
 }}
 
-注意：
-1. 评分必须客观公正，基于投标文件实际内容
-2. 评分理由要详细说明打分依据
+注意�?
+1. 评分必须客观公正，基于投标文件实际内�?
+2. 评分理由要详细说明打分依�?
 3. 证据必须来自投标文件原文
-4. 如果投标文件未提供相关信息，评分应为 0 分
-5. 如果文件存在错误或缺失，请在评分理由中说明对评分的影响"""
+4. 如果投标文件未提供相关信息，评分应为 0 �?
+5. 如果文件存在错误或缺失，请在评分理由中说明对评分的影�?""
 
         try:
             # 调用 LLM 进行评审
             response = self.llm.chat(
-                system_content="你是一位专业的招标评审专家，需要客观、公正地评估投标文件。",
+                system_content="你是一位专业的招标评审专家，需要客观、公正地评估投标文件�?,
                 user_content=prompt
             )
 
@@ -498,7 +497,7 @@ class AIEvaluator:
             if missing_files:
                 prompt_errors.append(f"⚠️ 以下文件未找到：{', '.join(missing_files)}")
             if errors:
-                prompt_errors.append(f"⚠️ 文件处理错误：{', '.join(errors[:3])}")  # 只显示前3个错误
+                prompt_errors.append(f"⚠️ 文件处理错误：{', '.join(errors[:3])}")  # 只显示前3个错�?
 
             if prompt_errors:
                 document_content = "\n".join(prompt_errors) + "\n\n" + document_content
@@ -509,7 +508,7 @@ class AIEvaluator:
                 document_content=document_content
             )
 
-            # 添加错误信息到评估结果
+            # 添加错误信息到评估结�?
             eval_result['errors'] = errors
             eval_result['missing_files'] = missing_files
 
