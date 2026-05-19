@@ -1,10 +1,64 @@
 {
-  "name": "green_low_carbon_skill",
-  "description": "绿色低碳生产及绿色回收评审项技能 - 从投标文件中提取与评审规则相关的原文描述信息",
-  "version": "1.0.0",
-  "category": "evaluation_item",
-  "rule_file": "规则/绿色低碳生产及绿色回收（0-4）.md",
-  "max_score": 4,
-  "input_type": "company_bid_path",
-  "output_type": "document_references"
+  "name": "green_low_carbon_evaluation",
+  "description": "绿色低碳生产及绿色回收评审技能",
+  "version": "2.0.0",
+  "author": "bid_evaluation_system",
+  "input": {
+    "type": "object",
+    "properties": {
+      "result_str": {
+        "type": "string",
+        "description": "文档内容的JSON字符串，格式为 {\"name\": \"文件名\", \"content\": \"文档内容\"}"
+      }
+    },
+    "required": ["result_str"]
+  },
+  "output": {
+    "type": "object",
+    "properties": {
+      "score": {
+        "type": "integer",
+        "description": "评分结果（0-4分）"
+      },
+      "max_score": {
+        "type": "integer",
+        "description": "满分"
+      },
+      "evaluation_rule": {
+        "type": "string",
+        "description": "评审规则"
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "file_name": {
+              "type": "string",
+              "description": "文件名"
+            },
+            "content": {
+              "type": "string",
+              "description": "引用的原文内容"
+            }
+          }
+        },
+        "description": "证据引用列表"
+      },
+      "reason": {
+        "type": "string",
+        "description": "评分理由"
+      }
+    }
+  },
+  "keywords": [
+    "绿色工厂", "绿色供应链", "绿色生产", "绿色回收",
+    "低碳", "绿色制造", "清洁生产", "节能降碳",
+    "工信部", "工业和信息化部", "认证", "证书"
+  ],
+  "evaluation_rules": [
+    {"condition": "取得国家工信部认证的有效绿色工厂、绿色供应链管理企业认证", "score": 4},
+    {"condition": "建立了绿色生产和绿色回收制度", "score": 2},
+    {"condition": "其余情况", "score": 0}
+  ]
 }

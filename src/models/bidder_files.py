@@ -18,6 +18,9 @@ class BidderFile(Base):
     parsed = Column(Boolean, default=False)  # 是否已解析
     parse_status = Column(String(50), default='pending')  # 解析状态：pending, processing, completed, failed
     parse_error = Column(String(500))  # 解析错误信息
+    ocr_status = Column(String(50), default='pending')  # OCR 状态：pending, processing, completed, failed, no_images
+    ocr_total_images = Column(Integer, default=0)  # 总图片数
+    ocr_completed_images = Column(Integer, default=0)  # 已完成 OCR 的图片数
     created_at = Column(DateTime, default=datetime.now)
     
     # 关系
@@ -34,6 +37,9 @@ class BidderFile(Base):
             "parsed": self.parsed,
             "parse_status": self.parse_status,
             "parse_error": self.parse_error,
+            "ocr_status": self.ocr_status,
+            "ocr_total_images": self.ocr_total_images,
+            "ocr_completed_images": self.ocr_completed_images,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 

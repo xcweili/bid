@@ -12,14 +12,7 @@ from pathlib import Path
 
 from models.project_structure import Package, Bidder
 from models.bidder_files import BidderFile, PackageFileUpload
-from models.database import db_session
-
-try:
-    import fitz  # PyMuPDF
-    PYMUPDF_AVAILABLE = True
-except ImportError:
-    PYMUPDF_AVAILABLE = False
-    logger.warning("PyMuPDF 未安装，PDF 转 MD 功能不可用")
+from models.database import db_session, SessionLocal
 
 router = APIRouter(prefix="/api/packages", tags=["包文件管理"])
 
@@ -115,9 +108,59 @@ def find_company_folders(root_dir: Path) -> List[Path]:
     return company_folders
 
 
+def _match_bidder(company_name: str, bidder_name_map: dict):
+    """根据文件夹名称匹配投标人"""
+    if company_name in bidder_name_map:
+        return bidder_name_map[company_name]
+    for name in bidder_name_map:
+        if company_name in name or name in company_name:
+            return bidder_name_map[name]
+    clean_company_name = ''.join(filter(str.isalnum, company_name))
+    for name in bidder_name_map:
+        clean_name = ''.join(filter(str.isalnum, name))
+        if clean_company_name in clean_name or clean_name in clean_company_name:
+            return bidder_name_map[name]
+    return None
+
+
+def _scan_files_to_db(db, company_folder: Path, extract_dir: Path, bidder, total_files, parsed_files):
+    """第一阶段：扫描公司文件夹下所有文件入库"""
+    scanned_pdfs = 0
+    for file_path in company_folder.rglob('*'):
+        if not file_path.is_file():
+            continue
+        if '_temp' in str(file_path):
+            continue
+
+        file_type = file_path.suffix.lower()[1:] if file_path.suffix else "other"
+        relative_path = str(file_path.relative_to(extract_dir))
+
+        bidder_file = BidderFile(
+            bidder_id=bidder.id,
+            file_name=file_path.name,
+            file_path=relative_path,
+            file_type=file_type,
+            file_size=file_path.stat().st_size,
+            parse_status="pending" if file_type == 'pdf' else "completed",
+            parsed=(file_type != 'pdf')
+        )
+        db.add(bidder_file)
+        total_files += 1
+        parsed_files += 1
+
+        if file_type == 'pdf':
+            scanned_pdfs += 1
+
+    return total_files, parsed_files, scanned_pdfs
+
+
 def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_event: threading.Event):
-    """后台处理包文件解析"""
+    """后台处理包文件解析（两阶段：先扫描入库，再逐个转换PDF）"""
     db = db_session()
+    total_files = 0
+    parsed_files = 0
+    unmatched_folders = []
+    
     try:
         logger.info(f"开始解析包文件：package_id={package_id}, upload_id={upload_id}")
         
@@ -148,146 +191,167 @@ def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_e
         company_folders = find_company_folders(extract_dir)
         logger.info(f"找到 {len(company_folders)} 个公司文件夹")
         
-        total_files = 0
-        parsed_files = 0
-        unmatched_folders = []
+        # ========== 第一阶段：扫描所有文件入库 ==========
+        logger.info("第一阶段：扫描所有文件入库")
+        total_pdf_count = 0
+        folder_bidder_map = {}  # 记录每个文件夹匹配到的投标人
         
         for company_folder in company_folders:
             if stop_event.is_set():
-                logger.info(f"解析任务已停止：package_id={package_id}, upload_id={upload_id}")
                 break
             
             company_name = company_folder.name
-            logger.info(f"处理公司文件夹：{company_name}")
-            
-            # 查找对应的投标人（支持多种匹配方式）
-            bidder = None
-            
-            # 方法1: 精确匹配
-            if company_name in bidder_name_map:
-                bidder = bidder_name_map[company_name]
-            else:
-                # 方法2: 模糊匹配（公司名称包含文件夹名或反之）
-                for name in bidder_name_map:
-                    if company_name in name or name in company_name:
-                        bidder = bidder_name_map[name]
-                        break
-                if not bidder:
-                    # 方法3: 移除特殊字符后匹配
-                    clean_company_name = ''.join(filter(str.isalnum, company_name))
-                    for name in bidder_name_map:
-                        clean_name = ''.join(filter(str.isalnum, name))
-                        if clean_company_name in clean_name or clean_name in clean_company_name:
-                            bidder = bidder_name_map[name]
-                            break
+            bidder = _match_bidder(company_name, bidder_name_map)
             
             if not bidder:
                 logger.warning(f"未找到对应的投标人，删除文件夹：{company_name}")
                 unmatched_folders.append(company_name)
                 try:
                     shutil.rmtree(company_folder)
-                    logger.info(f"已删除不匹配的文件夹：{company_name}")
                 except Exception as e:
                     logger.error(f"删除文件夹失败 {company_name}: {e}")
                 continue
             
-            # 扫描该公司的文件
-            for file_path in company_folder.rglob('*'):
+            folder_bidder_map[company_name] = bidder
+            logger.info(f"扫描公司文件夹：{company_name}")
+            
+            total_files, parsed_files, scanned_pdfs = _scan_files_to_db(
+                db, company_folder, extract_dir, bidder, total_files, parsed_files
+            )
+            total_pdf_count += scanned_pdfs
+            
+            # 更新进度
+            db.commit()
+            upload_record.total_files = total_files
+            upload_record.parsed_files = parsed_files
+            db.commit()
+        
+        if stop_event.is_set():
+            logger.info(f"解析任务已停止：package_id={package_id}, upload_id={upload_id}")
+            upload_record.status = "cancelled"
+            upload_record.completed_at = datetime.now()
+            db.commit()
+            db.close()
+            del parse_threads[(package_id, upload_id)]
+            return
+        
+        logger.info(f"第一阶段完成：共扫描 {total_files} 个文件（含 {total_pdf_count} 个PDF）")
+        
+        # 上传解压状态已完成（PDF转换单独由 conversion-status 跟踪）
+        upload_record.status = "completed"
+        upload_record.total_files = total_files
+        upload_record.parsed_files = parsed_files
+        upload_record.completed_at = datetime.now()
+        db.commit()
+        logger.info(f"文件扫描入库完成，upload_record 标记为 completed")
+        
+        # ========== 第二阶段：逐个转换PDF为MD ==========
+        # 注意：此阶段不再修改 upload_record.status，只更新 BidderFile 记录
+        logger.info("第二阶段：逐个转换PDF为MD")
+        converted_pdfs = 0
+        
+        for company_folder in company_folders:
+            if company_folder.name in unmatched_folders:
+                continue
+            if stop_event.is_set():
+                break
+            
+            bidder = folder_bidder_map.get(company_folder.name)
+            if not bidder:
+                continue
+            
+            # 查询该投标人下所有 PDF 文件（按文件名排序保持稳定顺序）
+            pdf_files = db.query(BidderFile).filter(
+                BidderFile.bidder_id == bidder.id,
+                BidderFile.file_type == "pdf"
+            ).order_by(BidderFile.file_name).all()
+            
+            for pdf_file in pdf_files:
                 if stop_event.is_set():
                     break
                 
-                if not file_path.is_file():
+                # 获取完整文件路径
+                pdf_path = extract_dir / pdf_file.file_path
+                if not pdf_path.exists():
+                    logger.warning(f"PDF文件不存在，跳过: {pdf_path}")
+                    pdf_file.parse_status = "failed"
+                    pdf_file.parse_error = "文件不存在"
+                    db.commit()
                     continue
                 
-                total_files += 1
-                
                 try:
-                    file_type = file_path.suffix.lower()[1:] if file_path.suffix else "other"
-                    relative_path = str(file_path.relative_to(extract_dir))
-                    
-                    bidder_file = BidderFile(
+                    # 创建 MD 文件记录
+                    md_relative_path = pdf_file.file_path.replace('.pdf', '.md')
+                    md_file = BidderFile(
                         bidder_id=bidder.id,
-                        file_name=file_path.name,
-                        file_path=relative_path,
-                        file_type=file_type,
-                        file_size=file_path.stat().st_size,
-                        parse_status="completed",
-                        parsed=True
-                    )
-                    db.add(bidder_file)
-                    parsed_files += 1
-                    
-                    # PDF 转 MD（与 PDF 同级目录）
-                    if file_type == 'pdf' and PYMUPDF_AVAILABLE:
-                        try:
-                            md_path = pdf_to_markdown(file_path, file_path.parent)
-                            if md_path and md_path.exists():
-                                # 记录 MD 文件
-                                md_relative_path = str(md_path.relative_to(extract_dir))
-                                md_file = BidderFile(
-                                    bidder_id=bidder.id,
-                                    file_name=md_path.name,
-                                    file_path=md_relative_path,
-                                    file_type='md',
-                                    file_size=md_path.stat().st_size,
-                                    parse_status="completed",
-                                    parsed=True
-                                )
-                                db.add(md_file)
-                                total_files += 1
-                                parsed_files += 1
-                                logger.info(f"PDF 转 MD 完成并记录: {md_path.name}")
-                        except Exception as pdf_e:
-                            logger.error(f"PDF 转 MD 失败 {file_path}: {pdf_e}")
-                    
-                    if parsed_files % 10 == 0:
-                        db.commit()
-                        upload_record.total_files = total_files
-                        upload_record.parsed_files = parsed_files
-                        db.commit()
-                
-                except Exception as e:
-                    logger.error(f"处理文件失败 {file_path}: {e}")
-                    bidder_file = BidderFile(
-                        bidder_id=bidder.id,
-                        file_name=file_path.name,
-                        file_path=str(file_path),
-                        file_type=file_path.suffix.lower()[1:] if file_path.suffix else "other",
-                        file_size=file_path.stat().st_size,
-                        parse_status="failed",
+                        file_name=pdf_path.stem + ".md",
+                        file_path=md_relative_path,
+                        file_type='md',
+                        file_size=0,
+                        parse_status="processing",
                         parsed=False,
-                        parse_error=str(e)
+                        ocr_status="pending"
                     )
-                    db.add(bidder_file)
-                    parsed_files += 1
-            
-            if stop_event.is_set():
-                break
+                    db.add(md_file)
+                    db.commit()
+                    
+                    logger.info(f"开始转换PDF: {pdf_path.name}")
+                    md_path = pdf_to_markdown(pdf_path, pdf_path.parent, md_file.id)
+                    
+                    # 重新查询 md_file
+                    md_file = db.query(BidderFile).filter(BidderFile.id == md_file.id).first()
+                    
+                    if md_path and md_path.exists():
+                        md_file.file_size = md_path.stat().st_size
+                        md_file.parse_status = "completed"
+                        md_file.parsed = True
+                        pdf_file.parse_status = "completed"
+                        pdf_file.parsed = True
+                        db.commit()
+                        converted_pdfs += 1
+                        parsed_files += 1
+                        logger.info(f"PDF 转 MD 完成: {pdf_path.name}")
+                    else:
+                        pdf_file.parse_status = "failed"
+                        pdf_file.parse_error = "转换失败"
+                        md_file.parse_status = "failed"
+                        md_file.ocr_status = "failed"
+                        db.commit()
+                        logger.warning(f"PDF 转 MD 失败: {pdf_path.name}")
+                        
+                except Exception as pdf_e:
+                    logger.error(f"PDF 转 MD 异常 {pdf_path}: {pdf_e}")
+                    # 标记当前PDF为失败（不调用 db.rollback() 以免 detached 其他对象）
+                    try:
+                        db.query(BidderFile).filter(BidderFile.id == pdf_file.id).update(
+                            {"parse_status": "failed", "parse_error": str(pdf_e)}
+                        )
+                        db.commit()
+                    except:
+                        pass
         
-        upload_record = db.query(PackageFileUpload).filter(
-            PackageFileUpload.id == upload_id
-        ).first()
-        if upload_record:
-            upload_record.status = "completed" if not stop_event.is_set() else "cancelled"
-            upload_record.total_files = total_files
-            upload_record.parsed_files = parsed_files
-            upload_record.completed_at = datetime.now()
-            db.commit()
-        
+        # ========== 完成 ==========
         summary = f"包文件解析完成：package_id={package_id}, upload_id={upload_id}"
-        summary += f", total_files={total_files}, matched_bidders={len(company_folders) - len(unmatched_folders)}"
+        summary += f", total_files={total_files}, pdf_count={total_pdf_count}, converted={converted_pdfs}"
+        summary += f", matched_bidders={len(company_folders) - len(unmatched_folders)}"
         if unmatched_folders:
             summary += f", deleted_unmatched={unmatched_folders}"
         logger.info(summary)
         
     except Exception as e:
-        logger.error(f"解析包文件失败：{e}")
-        upload_record = db.query(PackageFileUpload).filter(
-            PackageFileUpload.id == upload_id
-        ).first()
-        if upload_record:
-            upload_record.status = "failed"
-            db.commit()
+        logger.error(f"解析包文件失败：{e}", exc_info=True)
+        try:
+            upload_record = db.query(PackageFileUpload).filter(
+                PackageFileUpload.id == upload_id
+            ).first()
+            if upload_record:
+                upload_record.status = "failed"
+                upload_record.total_files = total_files
+                upload_record.parsed_files = parsed_files
+                upload_record.completed_at = datetime.now()
+                db.commit()
+        except:
+            pass
     finally:
         db.close()
         # 清理线程记录
@@ -362,91 +426,180 @@ def decode_filename(name: str) -> str:
     return name
 
 
-def pdf_to_markdown(pdf_path: Path, output_dir: Path) -> Optional[Path]:
-    """将 PDF 文件转换为 Markdown 文件
+def _update_ocr_status(md_file_id: int, **kwargs):
+    """在独立 session 中更新 MD 文件的 OCR 状态"""
+    try:
+        inner_db = SessionLocal()
+        try:
+            record = inner_db.query(BidderFile).filter(BidderFile.id == md_file_id).first()
+            if record:
+                for key, value in kwargs.items():
+                    setattr(record, key, value)
+                inner_db.commit()
+        finally:
+            inner_db.close()
+    except Exception as e:
+        logger.error(f"更新 OCR 状态失败 md_file_id={md_file_id}: {e}")
+
+
+def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) -> Optional[Path]:
+    """将 PDF 文件转换为 Markdown 文件（使用 OpenDataLoader）
     
-    支持两种模式：
-    1. 纯文本 PDF：直接提取文本
-    2. 扫描版 PDF（图片 PDF）：使用 OCR 识别图片内容
+    转换流程：
+    1. 使用 opendataloader_pdf 转换 PDF 为 Markdown
+    2. 提取 PDF 中的图片
+    3. 使用 OCR 识别图片内容
+    4. 将图片链接替换为 OCR 识别的文本内容
     
     Args:
         pdf_path: PDF 文件路径
-        output_dir: 输出目录
+        output_dir: 输出目录（PDF 同级目录）
+        md_file_id: MD 文件的数据库记录 ID（用于更新 OCR 状态）
         
     Returns:
         生成的 MD 文件路径，失败返回 None
     """
-    if not PYMUPDF_AVAILABLE:
-        logger.warning(f"PyMuPDF 未安装，无法转换 PDF: {pdf_path}")
-        return None
-    
     try:
-        doc = fitz.open(str(pdf_path))
-        md_content = []
+        import opendataloader_pdf
+        import re
+        import shutil
+        from services.ocr_service import OCRService
         
-        total_text_length = 0
-        for page_num, page in enumerate(doc, start=1):
-            # 提取文本
-            text = page.get_text()
-            total_text_length += len(text.strip())
-            if text.strip():
-                md_content.append(f"## 第{page_num}页\n\n{text}\n")
+        logger.info(f"开始使用 OpenDataLoader 转换 PDF: {pdf_path}")
+        
+        # 更新 OCR 状态为处理中（使用独立 session）
+        if md_file_id:
+            _update_ocr_status(md_file_id, ocr_status="processing")
+        
+        # 创建临时输出目录
+        temp_output_dir = output_dir / f"{pdf_path.stem}_temp"
+        temp_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 使用 opendataloader 转换 PDF
+        try:
+            opendataloader_pdf.convert(
+                input_path=[str(pdf_path)],
+                output_dir=str(temp_output_dir),
+                format="markdown",
+                image_output="external",
+                image_format="png",
+                markdown_page_separator="\n\n---\n\n## 第 %page-number% 页\n\n",
+                quiet=True
+            )
+        except Exception as convert_e:
+            logger.error(f"opendataloader 转换失败 {pdf_path}: {convert_e}")
+            if md_file_id:
+                _update_ocr_status(md_file_id, ocr_status="failed")
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
+            return None
+        
+        # 查找生成的 markdown 文件
+        md_files = list(temp_output_dir.rglob("*.md"))
+        if not md_files:
+            logger.error(f"未找到生成的 Markdown 文件: {pdf_path}")
+            if md_file_id:
+                _update_ocr_status(md_file_id, ocr_status="failed")
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
+            return None
+        
+        temp_md_path = md_files[0]
+        logger.info(f"临时 Markdown 文件: {temp_md_path}")
+        
+        # 读取 markdown 内容
+        md_content = temp_md_path.read_text(encoding='utf-8')
+        
+        # 查找所有图片链接（完整匹配串 + 路径 + 扩展名）
+        image_pattern = r'!\[.*?\]\(([^)]+\.(png|jpg|jpeg|gif))\)'
+        image_iter = list(re.finditer(image_pattern, md_content))
+        image_matches = [(m.group(0), m.group(1), m.group(2)) for m in image_iter]
+        
+        total_images = len(image_matches)
+        completed_images = 0
+        
+        logger.info(f"Markdown 中找到 {total_images} 个图片链接")
+        
+        # 更新总图片数（使用独立 session）
+        if md_file_id:
+            if total_images == 0:
+                _update_ocr_status(md_file_id, ocr_status="no_images",
+                                   ocr_total_images=0, ocr_completed_images=0)
             else:
-                md_content.append(f"## 第{page_num}页\n\n[该页无文本内容]\n")
+                _update_ocr_status(md_file_id, ocr_total_images=total_images)
         
-        doc.close()
-        
-        # 判断是否为扫描版 PDF（文本内容很少可能是扫描版）
-        is_scanned_pdf = total_text_length < 100
-        
-        # 如果是扫描版 PDF，尝试使用 OCR 识别
-        if is_scanned_pdf:
-            logger.info(f"检测到扫描版 PDF，尝试 OCR 识别: {pdf_path}")
-            try:
-                from services.ocr_service import OCRService
+        # 如果有图片，进行 OCR 识别并替换
+        if image_matches:
+            ocr_service = OCRService()
+            
+            for full_match, image_rel_path, image_ext in image_matches:
+                # 图片的完整路径
+                image_full_path = temp_output_dir / image_rel_path
                 
-                ocr_service = OCRService()
-                # 提取图片并进行 OCR
-                temp_dir = output_dir / f"{pdf_path.stem}_ocr_temp"
-                temp_dir.mkdir(parents=True, exist_ok=True)
+                if not image_full_path.exists():
+                    logger.warning(f"图片文件不存在: {image_full_path}")
+                    continue
                 
-                image_results = ocr_service.process_document_images(str(pdf_path), str(temp_dir))
+                logger.info(f"正在 OCR 识别图片: {image_rel_path}")
                 
-                if image_results:
-                    # 使用 OCR 结果生成 MD
-                    md_content = [f"# {pdf_path.name}\n\n"]
-                    md_content.append("## OCR 识别结果（扫描版 PDF）\n\n")
-                    md_content.append("---\n\n")
+                # OCR 识别
+                ocr_text = ocr_service.ocr_image(str(image_full_path))
+                
+                if ocr_text and "OCR 识别失败" not in ocr_text:
+                    # 清理 OCR 文本，移除多余空行
+                    ocr_text = re.sub(r'\n{3,}', '\n\n', ocr_text.strip())
                     
-                    for result in image_results:
-                        page_num = result.get("page_num", 1)
-                        ocr_text = result.get("ocr_text", "")
-                        md_content.append(f"## 第{page_num}页\n\n")
-                        md_content.append(f"{ocr_text}\n\n")
-                        md_content.append("---\n\n")
+                    # 在 markdown 中添加 OCR 内容标识
+                    ocr_section = f"\n\n**[图片内容 OCR 识别]**\n\n{ocr_text}\n\n"
                     
-                    # 清理临时目录
-                    import shutil
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    logger.info(f"OCR 识别完成: {pdf_path}")
+                    # 用 str.replace 精确替换（避免 re.sub 中 OCR 文本含特殊字符时报错）
+                    md_content = md_content.replace(full_match, ocr_section)
+                    
+                    completed_images += 1
+                    
+                    # 更新 OCR 进度（使用独立 session）
+                    if md_file_id:
+                        _update_ocr_status(md_file_id, ocr_completed_images=completed_images)
+                    
+                    logger.info(f"图片 OCR 识别成功: {image_rel_path}")
                 else:
-                    logger.warning(f"扫描版 PDF 图片提取失败: {pdf_path}")
-                    
-            except Exception as ocr_e:
-                logger.error(f"OCR 识别失败 {pdf_path}: {ocr_e}")
-                # 继续使用原始文本内容
+                    logger.warning(f"图片 OCR 识别失败: {image_rel_path}")
         
-        # 生成 MD 文件路径（与 PDF 同级目录）
+        # 更新 OCR 状态为完成（使用独立 session）
+        if md_file_id:
+            if total_images == 0:
+                final_status = "no_images"
+            elif completed_images == total_images:
+                final_status = "completed"
+            else:
+                final_status = "partial"
+            _update_ocr_status(md_file_id, ocr_status=final_status,
+                               ocr_completed_images=completed_images)
+        
+        # 添加文件标题（包含完整文件名和分页标识）
+        final_md_content = f"# 文件：{pdf_path.name}\n\n{md_content}"
+        
+        # 生成最终的 MD 文件路径（与 PDF 同级目录）
         md_filename = pdf_path.stem + ".md"
         md_path = output_dir / md_filename
         
         # 写入 MD 文件
-        md_path.write_text("\n".join(md_content), encoding='utf-8')
+        md_path.write_text(final_md_content, encoding='utf-8')
         logger.info(f"PDF 转 MD 成功: {pdf_path} -> {md_path}")
+        
+        # 清理临时目录（包括所有图片）
+        shutil.rmtree(temp_output_dir, ignore_errors=True)
+        logger.info(f"已清理临时目录: {temp_output_dir}")
+        
         return md_path
         
+    except ImportError:
+        logger.error(f"opendataloader_pdf 未安装，请先安装: pip install opendataloader-pdf")
+        if md_file_id:
+            _update_ocr_status(md_file_id, ocr_status="failed")
+        return None
     except Exception as e:
-        logger.error(f"PDF 转 MD 失败 {pdf_path}: {e}")
+        logger.error(f"PDF 转 MD 失败 {pdf_path}: {e}", exc_info=True)
+        if md_file_id:
+            _update_ocr_status(md_file_id, ocr_status="failed")
         return None
 
 
@@ -463,7 +616,47 @@ async def get_upload_status(package_id: int, upload_id: int):
         if not upload_record:
             raise HTTPException(status_code=404, detail="上传记录不存在")
         
-        return upload_record.to_dict()
+        result = upload_record.to_dict()
+        
+        # 获取所有 MD 文件的 OCR 状态
+        md_files = db.query(BidderFile).filter(
+            BidderFile.file_type == 'md'
+        ).all()
+        
+        ocr_stats = {
+            "total_md_files": len(md_files),
+            "completed": 0,
+            "processing": 0,
+            "pending": 0,
+            "failed": 0,
+            "no_images": 0,
+            "partial": 0,
+            "total_images": 0,
+            "completed_images": 0
+        }
+        
+        for md_file in md_files:
+            status = md_file.ocr_status or "pending"
+            ocr_stats[status] = ocr_stats.get(status, 0) + 1
+            ocr_stats["total_images"] += md_file.ocr_total_images or 0
+            ocr_stats["completed_images"] += md_file.ocr_completed_images or 0
+        
+        result["ocr_stats"] = ocr_stats
+        
+        # 计算整体进度（考虑 OCR 状态）
+        # 只有当所有 MD 文件的 OCR 都完成（completed 或 no_images）时，才算完全完成
+        if ocr_stats["total_md_files"] > 0:
+            ocr_completed = ocr_stats["completed"] + ocr_stats["no_images"]
+            ocr_progress = (ocr_completed / ocr_stats["total_md_files"]) * 100
+            result["ocr_progress"] = ocr_progress
+            
+            # 如果 OCR 还在进行中，整体状态应该是 processing
+            if upload_record.status == "completed" and ocr_progress < 100:
+                result["status"] = "processing"
+        else:
+            result["ocr_progress"] = 100
+        
+        return result
     finally:
         db.close()
 
@@ -665,7 +858,7 @@ async def delete_package_files(package_id: int):
                 except Exception as e:
                     logger.error(f"删除ZIP文件失败 {upload.zip_file_path}: {e}")
         
-        # 获取包下所有投标人的文件记录
+        # 获取包下所有投标人
         bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
         bidder_ids = [b.id for b in bidders]
         
@@ -683,13 +876,13 @@ async def delete_package_files(package_id: int):
             except Exception as e:
                 logger.error(f"删除文件目录失败 {extract_dir}: {e}")
         
-        # 删除数据库记录
+        # 删除数据库记录（只删除文件记录，保留投标人记录）
         db.query(BidderFile).filter(BidderFile.bidder_id.in_(bidder_ids)).delete()
         db.query(PackageFileUpload).filter(PackageFileUpload.package_id == package_id).delete()
         
         db.commit()
         
-        logger.info(f"已删除包 {package_id} 的所有文件")
+        logger.info(f"已删除包 {package_id} 的所有文件记录")
         return {"message": "文件删除成功"}
         
     except Exception as e:
@@ -834,7 +1027,7 @@ async def get_package_conversion_status(package_id: int):
         if not bidders:
             return {
                 "package_id": package_id,
-                "conversion_ready": True,
+                "conversion_ready": False,
                 "total_pdf_count": 0,
                 "converted_count": 0,
                 "failed_count": 0,
@@ -858,23 +1051,20 @@ async def get_package_conversion_status(package_id: int):
                 BidderFile.file_type == "pdf"
             ).all()
             
-            # 统计对应的MD文件
+            # 统计已成功转换的PDF（parse_status == "completed"）
+            completed_pdfs = [f for f in pdf_files if f.parse_status == "completed"]
+            
+            # 统计对应的MD文件（用于展示）
             md_files = db.query(BidderFile).filter(
                 BidderFile.bidder_id == bidder.id,
                 BidderFile.file_type == "md"
             ).all()
             
-            # 统计转换失败的文件
-            failed_files = db.query(BidderFile).filter(
-                BidderFile.bidder_id == bidder.id,
-                BidderFile.parse_status == "failed"
-            ).all()
+            # 统计转换失败的文件（只统计PDF的失败）
+            failed_files = [f for f in pdf_files if f.parse_status == "failed"]
             
-            # 统计处理中的文件
-            processing_files = db.query(BidderFile).filter(
-                BidderFile.bidder_id == bidder.id,
-                BidderFile.parse_status == "processing"
-            ).all()
+            # 统计处理/待处理中的文件（pending 也归为处理中）
+            processing_files = [f for f in pdf_files if f.parse_status in ("processing", "pending")]
             
             bidder_status = {
                 "bidder_id": bidder.id,
@@ -883,17 +1073,18 @@ async def get_package_conversion_status(package_id: int):
                 "md_count": len(md_files),
                 "failed_count": len(failed_files),
                 "processing_count": len(processing_files),
-                "conversion_ready": len(pdf_files) == len(md_files) and len(failed_files) == 0
+                "conversion_ready": len(pdf_files) > 0 and len(completed_pdfs) == len(pdf_files)
             }
             
             result["total_pdf_count"] += len(pdf_files)
-            result["converted_count"] += len(md_files)
+            result["converted_count"] += len(completed_pdfs)
             result["failed_count"] += len(failed_files)
             result["processing_count"] += len(processing_files)
             result["bidders"].append(bidder_status)
         
-        # 判断整个包是否可以启动评审
+        # 判断整个包是否可以启动评审（总PDF数为0时不认为ready）
         result["conversion_ready"] = (
+            result["total_pdf_count"] > 0 and
             result["total_pdf_count"] == result["converted_count"] and 
             result["failed_count"] == 0 and 
             result["processing_count"] == 0

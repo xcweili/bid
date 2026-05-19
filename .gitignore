@@ -38,7 +38,9 @@ logs/*.log
 *.log
 
 # Database
+*.db
 *.db.bak
+*.sqlite3
 *.sqlite3.bak
 
 # Frontend
@@ -49,6 +51,7 @@ frontend/dist/
 temp/
 *.tmp
 *.tmp.*
+src/data/
 
 # OS
 .DS_Store

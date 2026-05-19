@@ -108,28 +108,17 @@ const PackageEvaluationDetail: React.FC = () => {
     }
   }, [projectId, packageId]);
   
-  // 轮询转换状态
+  // 轮询转换状态（PDF转换是后台长任务，需要自动轮询）
   useEffect(() => {
     if (!conversionStatus) return;
     
-    // 如果有文件正在处理中，每3秒轮询一次
     if (conversionStatus.processing_count > 0) {
       const interval = setInterval(() => {
         fetchConversionStatus();
-      }, 3000);
+      }, 30000);
       return () => clearInterval(interval);
     }
   }, [conversionStatus]);
-
-  useEffect(() => {
-    // 轮询上传状态
-    if (uploadStatus && uploadStatus.status === 'processing') {
-      const interval = setInterval(() => {
-        fetchUploadStatus();
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [uploadStatus]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -173,21 +162,6 @@ const PackageEvaluationDetail: React.FC = () => {
     }
   };
 
-  const fetchUploadStatus = async () => {
-    try {
-      const res = await fetch(`/api/packages/${packageId}/upload-status/${uploadStatus?.uploadId}`);
-      const data = await res.json();
-      setUploadStatus({ status: data.status, progress: data.progress });
-      
-      if (data.status === 'completed' || data.status === 'failed') {
-        message.success(data.status === 'completed' ? '文件解析完成' : '文件解析失败');
-        fetchData();
-      }
-    } catch (error) {
-      console.error('获取上传状态失败:', error);
-    }
-  };
-
   const fetchBidderFileTree = async (bidderId: number) => {
     setFileTreeLoading(true);
     try {
@@ -209,6 +183,15 @@ const PackageEvaluationDetail: React.FC = () => {
       const res = await fetch(`/api/packages/${packageId}/conversion-status`);
       const data = await res.json();
       setConversionStatus(data);
+      // 检测到有PDF数据时，更新上传状态为已完成（Phase 1扫描入库完成）
+      if (data.total_pdf_count > 0 && uploadStatus?.status === 'processing') {
+        setUploadStatus({ ...uploadStatus, status: 'completed' });
+      } else if (data.bidders?.length > 0 && data.total_pdf_count === 0 && uploadStatus?.status === 'processing') {
+        // 有投标人但PDF数为0，说明正在扫描中，不改变状态
+      } else if (data.bidders?.length === 0) {
+        // 没有投标人，说明还没上传，清除上传状态
+        setUploadStatus(null);
+      }
     } catch (error) {
       console.error('获取转换状态失败:', error);
     } finally {
@@ -299,9 +282,11 @@ const PackageEvaluationDetail: React.FC = () => {
       });
       const data = await res.json();
       
-      setUploadStatus({ status: 'processing', progress: 0, uploadId: data.upload_id });
       setUploadModalVisible(false);
+      setUploadStatus({ status: 'processing', progress: 0, uploadId: data.upload_id });
       message.info('文件上传成功，开始解析');
+      // 上传后立即查询一次转换状态，后续用户点击刷新查看
+      setTimeout(() => fetchConversionStatus(), 500);
     } catch (error) {
       message.error('上传失败');
     } finally {
@@ -487,7 +472,7 @@ const PackageEvaluationDetail: React.FC = () => {
         </Space>
       </div>
 
-      {/* 上传状态提示 */}
+      {/* 上传状态提示（无自动轮询，用户手动刷新） */}
       {uploadStatus && (
         <Card style={{ marginBottom: 24, borderColor: '#1890ff' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -495,7 +480,6 @@ const PackageEvaluationDetail: React.FC = () => {
               <>
                 <Spin size="small" />
                 <Text>文件解析中...</Text>
-                <Progress percent={Math.round(uploadStatus.progress)} size="small" />
               </>
             ) : uploadStatus.status === 'completed' ? (
               <>
@@ -511,9 +495,9 @@ const PackageEvaluationDetail: React.FC = () => {
             <Button
               size="small"
               icon={<ReloadOutlined />}
-              onClick={fetchData}
+              onClick={() => { fetchConversionStatus(); }}
             >
-              刷新
+              刷新转换状态
             </Button>
           </div>
         </Card>
@@ -754,7 +738,12 @@ const PackageEvaluationDetail: React.FC = () => {
 
             {/* 转换状态标识 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-              {conversionStatus.conversion_ready ? (
+              {conversionStatus.total_pdf_count === 0 ? (
+                <>
+                  <InboxOutlined style={{ color: '#8c8c8c', fontSize: 20 }} />
+                  <span style={{ color: '#8c8c8c', fontWeight: 500 }}>暂无文件，请先上传文件</span>
+                </>
+              ) : conversionStatus.conversion_ready ? (
                 <>
                   <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 20 }} />
                   <span style={{ color: '#52c41a', fontWeight: 500 }}>所有PDF文件已完成转换，可以启动评审</span>
