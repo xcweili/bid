@@ -539,25 +539,18 @@ const PackageEvaluationDetail: React.FC = () => {
                 render: (category: string) => category || '-'
               },
               {
-                title: '评分范围',
-                key: 'score_range',
-                width: 150,
-                render: (_: any, record: PackageItemWithDetails) => (
-                  <Space>
-                    <SaveOutlined style={{ color: '#1890ff' }} />
-                    <span>{record.min_score} - {record.max_score} 分</span>
-                  </Space>
-                )
-              },
-              {
-                title: '权重',
-                key: 'weight',
-                width: 100,
-                render: (_: any, record: PackageItemWithDetails) => (
-                  <Space>
-                    <PercentageOutlined style={{ color: '#52c41a' }} />
-                    <span>{record.custom_weight || record.weight}</span>
-                  </Space>
+                title: '工作流ID',
+                dataIndex: 'workflow_id',
+                key: 'workflow_id',
+                width: 200,
+                render: (workflowId: string) => (
+                  workflowId ? (
+                    <Tag color="purple" style={{ fontSize: 12 }}>
+                      {workflowId}
+                    </Tag>
+                  ) : (
+                    <Text type="secondary">-</Text>
+                  )
                 )
               },
               {

@@ -31,9 +31,9 @@ class Config:
     LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
     
     # Dify API 配置
-    DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
-    DIFY_BASE_URL = os.getenv("DIFY_BASE_URL", "https://api.dify.ai/v1")
-    DIFY_WORKFLOW_ID = os.getenv("DIFY_WORKFLOW_ID", "")
+    DIFY_API_KEY = os.getenv("DIFY_API_KEY", "app-4pi8NqfyLf4VLJox29ZQ2AT2")
+    DIFY_BASE_URL = os.getenv("DIFY_BASE_URL", "http://10.255.216.2:8083/v1")
+    DIFY_WORKFLOW_ID = os.getenv("DIFY_WORKFLOW_ID", "866c5951-f8e6-4ce6-b1df-223952664773")
     
     @classmethod
     def init_app(cls):

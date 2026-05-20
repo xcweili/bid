@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Button, Typography, Table, Modal, Form, Input,
-  message, Space, Select, InputNumber, Switch, Row, Col
+  message, Space, Select, Switch, Row, Col, Tag, Tooltip
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined
 } from '@ant-design/icons';
 import { evaluationItemService, EvaluationItem } from '../services/evaluationItemService';
+import PageHeader from '../components/PageHeader';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -57,12 +58,12 @@ const RuleConfig: React.FC = () => {
     form.setFieldsValue({
       item_code: item.item_code,
       item_name: item.item_name,
-      item_description: item.item_description,
-      max_score: item.max_score,
-      min_score: item.min_score,
-      weight: item.weight,
       material_category: item.material_category,
-      is_active: item.is_active
+      is_active: item.is_active,
+      workflow_id: item.workflow_id,
+      item_content: item.item_content,
+      api_key: item.api_key,
+      base_url: item.base_url
     });
     setShowModal(true);
   };
@@ -110,13 +111,12 @@ const RuleConfig: React.FC = () => {
 
   // 过滤数据
   const filteredItems = items.filter(item => {
-    const matchSearch = !searchText || 
+    const matchSearch = !searchText ||
       item.item_name.toLowerCase().includes(searchText.toLowerCase()) ||
-      item.item_code.toLowerCase().includes(searchText.toLowerCase()) ||
-      (item.item_description && item.item_description.toLowerCase().includes(searchText.toLowerCase()));
-    
+      item.item_code.toLowerCase().includes(searchText.toLowerCase());
+
     const matchCategory = !categoryFilter || item.material_category === categoryFilter;
-    
+
     return matchSearch && matchCategory;
   });
 
@@ -141,18 +141,32 @@ const RuleConfig: React.FC = () => {
       render: (category: string) => category || '-'
     },
     {
-      title: '评分范围',
-      key: 'score_range',
-      width: 120,
-      render: (_: any, record: EvaluationItem) => (
-        <span>{record.min_score} - {record.max_score} 分</span>
+      title: '评审项内容',
+      dataIndex: 'item_content',
+      key: 'item_content',
+      width: 250,
+      render: (content: string) => (
+        <Tooltip title={content || '无内容'}>
+          <span style={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', whiteSpace: 'nowrap' }}>
+            {content || '-'}
+          </span>
+        </Tooltip>
       )
     },
     {
-      title: '权重',
-      dataIndex: 'weight',
-      key: 'weight',
-      width: 80
+      title: '工作流ID',
+      dataIndex: 'workflow_id',
+      key: 'workflow_id',
+      width: 200,
+      render: (workflowId: string) => (
+        workflowId ? (
+          <Tag color="purple" style={{ fontSize: 12 }}>
+            {workflowId}
+          </Tag>
+        ) : (
+          <Text type="secondary">-</Text>
+        )
+      )
     },
     {
       title: '状态',
@@ -182,14 +196,11 @@ const RuleConfig: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <SettingOutlined /> 评审项管理
-        </Title>
-        <Text type="secondary" style={{ marginLeft: 12 }}>
-          管理所有评审项，支持按物资品类筛选
-        </Text>
-      </div>
+      <PageHeader
+        title="评审项管理"
+        description="管理所有评审项，支持按物资品类筛选"
+        icon={<SettingOutlined />}
+      />
 
       <Card>
         {/* 搜索和筛选 */}
@@ -239,7 +250,7 @@ const RuleConfig: React.FC = () => {
           setShowModal(false);
           form.resetFields();
         }}
-        width={600}
+        width={700}
         okText="保存"
         cancelText="取消"
       >
@@ -268,39 +279,40 @@ const RuleConfig: React.FC = () => {
           </Form.Item>
 
           <Form.Item
-            name="item_description"
-            label="评审项描述"
+            name="workflow_id"
+            label="工作流ID"
           >
-            <TextArea rows={3} placeholder="请输入评审项描述" />
+            <Input placeholder="Dify 工作流 ID（选填，配置后使用带workflow_id的调用方式）" />
           </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="min_score"
-                label="最低分"
-                rules={[{ required: true, message: '请输入最低分' }]}
-              >
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="max_score"
-                label="最高分"
-                rules={[{ required: true, message: '请输入最高分' }]}
-              >
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="api_key"
+            label="Dify API Key"
+          >
+            <Input.Password placeholder="Dify API Key（用于访问工作流）" />
+          </Form.Item>
 
           <Form.Item
-            name="weight"
-            label="权重"
-            rules={[{ required: true, message: '请输入权重' }]}
+            name="base_url"
+            label="Dify API 基础地址"
           >
-            <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
+            <Input 
+              placeholder="例如：http://10.255.216.2:8083/v1" 
+              style={{ width: '100%' }}
+            />
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+              留空则使用默认地址：http://10.255.216.2:8083/v1
+            </Text>
+          </Form.Item>
+
+          <Form.Item
+            name="item_content"
+            label="评审项内容（Markdown格式）"
+          >
+            <TextArea
+              rows={6}
+              placeholder="支持 Markdown 格式，如：\n\n## 评审标准\n\n- 标准一\n- 标准二\n\n**重要说明：** ..."
+            />
           </Form.Item>
 
           <Form.Item

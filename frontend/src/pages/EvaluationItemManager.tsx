@@ -1,30 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Typography, Table, Tag, Button, Space, message,
-  Modal, Input, Row, Col, Switch, InputNumber, Empty, Tooltip
+  Modal, Input, Row, Col, Switch, Empty, Tooltip, Upload,
+  Divider, Popover
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
-  SaveOutlined, CloseOutlined, EyeOutlined
+  SaveOutlined, CloseOutlined, EyeOutlined, FileTextOutlined,
+  CopyOutlined, FileImageOutlined, FilePdfOutlined,
+  FileWordOutlined, FileExcelOutlined, FileOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
-import { evaluationItemService, EvaluationItem } from '../services/evaluationItemService';
+import { evaluationItemService, EvaluationItem, FileInfo, FileCreateRequest } from '../services/evaluationItemService';
+import PageHeader from '../components/PageHeader';
 
 const { Title, Text } = Typography;
+
+const getFileIcon = (fileType: string | undefined) => {
+  if (!fileType) return <FileOutlined />;
+  const lowerType = fileType.toLowerCase();
+  if (lowerType.includes('pdf')) return <FilePdfOutlined />;
+  if (lowerType.includes('doc') || lowerType.includes('docx')) return <FileWordOutlined />;
+  if (lowerType.includes('xls') || lowerType.includes('xlsx')) return <FileExcelOutlined />;
+  if (lowerType.includes('image') || lowerType.includes('jpg') || lowerType.includes('png')) return <FileImageOutlined />;
+  return <FileTextOutlined />;
+};
+
+const getFileSize = (size: number | undefined) => {
+  if (!size) return '-';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+};
 
 const EvaluationItemManager: React.FC = () => {
   const [items, setItems] = useState<EvaluationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const [editingItem, setEditingItem] = useState<EvaluationItem | null>(null);
   const [formData, setFormData] = useState({
     item_code: '',
     item_name: '',
-    item_description: '',
-    max_score: 100,
-    min_score: 0,
-    weight: 1,
-    is_active: true
+    item_content: '',
+    is_active: true,
+    workflow_id: ''
   });
+  const [currentItemFiles, setCurrentItemFiles] = useState<FileInfo[]>([]);
+  const [previewContent, setPreviewContent] = useState('');
 
   useEffect(() => {
     fetchItems();
@@ -47,26 +70,32 @@ const EvaluationItemManager: React.FC = () => {
     setFormData({
       item_code: '',
       item_name: '',
-      item_description: '',
-      max_score: 100,
-      min_score: 0,
-      weight: 1,
-      is_active: true
+      item_content: '',
+      is_active: true,
+      workflow_id: ''
     });
+    setCurrentItemFiles([]);
     setShowModal(true);
   };
 
-  const handleEdit = (item: EvaluationItem) => {
+  const handleEdit = async (item: EvaluationItem) => {
     setEditingItem(item);
     setFormData({
       item_code: item.item_code,
       item_name: item.item_name,
-      item_description: item.item_description || '',
-      max_score: item.max_score,
-      min_score: item.min_score,
-      weight: item.weight,
-      is_active: item.is_active
+      item_content: item.item_content || '',
+      is_active: item.is_active,
+      workflow_id: item.workflow_id || ''
     });
+    
+    // 获取文件列表
+    try {
+      const files = await evaluationItemService.getFiles(item.id);
+      setCurrentItemFiles(files);
+    } catch {
+      setCurrentItemFiles([]);
+    }
+    
     setShowModal(true);
   };
 
@@ -110,6 +139,52 @@ const EvaluationItemManager: React.FC = () => {
     }
   };
 
+  const handleAddFile = async () => {
+    if (!editingItem) return;
+    
+    const mockFile: FileCreateRequest = {
+      file_name: `评审文档_${Date.now()}.pdf`,
+      file_path: `/uploads/documents/${Date.now()}.pdf`,
+      file_type: 'application/pdf',
+      file_size: Math.floor(Math.random() * 1024 * 1024) + 1024,
+      description: '评审参考文档'
+    };
+
+    try {
+      const result = await evaluationItemService.addFile(editingItem.id, mockFile);
+      setCurrentItemFiles(result.files || []);
+      message.success('文件添加成功');
+    } catch (error) {
+      message.error('添加文件失败');
+    }
+  };
+
+  const handleRemoveFile = async (fileId: number) => {
+    if (!editingItem) return;
+
+    Modal.confirm({
+      title: '确认删除',
+      content: '确定要删除该文件吗？',
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const result = await evaluationItemService.removeFile(editingItem.id, fileId);
+          setCurrentItemFiles(result.files || []);
+          message.success('文件删除成功');
+        } catch (error) {
+          message.error('删除文件失败');
+        }
+      }
+    });
+  };
+
+  const handlePreview = () => {
+    setPreviewContent(formData.item_content || '暂无内容');
+    setShowPreview(true);
+  };
+
   const columns = [
     {
       title: '评审项编号',
@@ -125,19 +200,31 @@ const EvaluationItemManager: React.FC = () => {
       width: 200
     },
     {
-      title: '评分范围',
-      key: 'score_range',
-      width: 150,
-      render: (_: any, record: EvaluationItem) => (
-        <span>{record.min_score} - {record.max_score} 分</span>
+      title: '工作流ID',
+      dataIndex: 'workflow_id',
+      key: 'workflow_id',
+      width: 200,
+      render: (workflowId: string) => (
+        workflowId ? (
+          <Tag color="purple" style={{ fontSize: 12 }}>
+            <Tooltip title={workflowId}>
+              <span style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
+                {workflowId}
+              </span>
+            </Tooltip>
+          </Tag>
+        ) : (
+          <Text type="secondary">-</Text>
+        )
       )
     },
     {
-      title: '权重',
-      dataIndex: 'weight',
-      key: 'weight',
-      width: 100,
-      render: (weight: number) => <Tag color="blue">{weight}</Tag>
+      title: '关联文件数',
+      key: 'file_count',
+      width: 120,
+      render: (_: any, record: EvaluationItem) => (
+        <Tag color="blue">{record.files?.length || 0} 个</Tag>
+      )
     },
     {
       title: '状态',
@@ -153,13 +240,13 @@ const EvaluationItemManager: React.FC = () => {
       )
     },
     {
-      title: '描述',
-      dataIndex: 'item_description',
-      key: 'item_description',
-      render: (desc: string) => (
-        <Tooltip title={desc || '无'}>
-          <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
-            {desc || '-'}
+      title: '评审项内容',
+      dataIndex: 'item_content',
+      key: 'item_content',
+      render: (content: string) => (
+        <Tooltip title={content || '无内容'}>
+          <span style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', whiteSpace: 'nowrap' }}>
+            {content || '-'}
           </span>
         </Tooltip>
       )
@@ -167,7 +254,7 @@ const EvaluationItemManager: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 220,
       render: (_: any, record: EvaluationItem) => (
         <Space size="small">
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
@@ -182,12 +269,13 @@ const EvaluationItemManager: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <Title level={2}>评审项管理</Title>
-          <Text type="secondary">管理和配置评审项，可在包中选择需要的评审项</Text>
-        </div>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <PageHeader
+          title="评审项管理"
+          description="管理和配置评审项，可在包中选择需要的评审项"
+          icon={<SettingOutlined />}
+        />
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
           新增评审项
         </Button>
@@ -219,6 +307,7 @@ const EvaluationItemManager: React.FC = () => {
         visible={showModal}
         footer={null}
         onCancel={() => setShowModal(false)}
+        width={800}
       >
         <div style={{ padding: 16 }}>
           <Row gutter={16}>
@@ -240,46 +329,73 @@ const EvaluationItemManager: React.FC = () => {
             </Col>
           </Row>
           <Row gutter={16} style={{ marginTop: 16 }}>
-            <Col span={8}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>最低分</label>
-              <InputNumber
-                value={formData.min_score}
-                onChange={(value) => setFormData({ ...formData, min_score: value || 0 })}
-                min={0}
-                style={{ width: '100%' }}
-              />
-            </Col>
-            <Col span={8}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>最高分</label>
-              <InputNumber
-                value={formData.max_score}
-                onChange={(value) => setFormData({ ...formData, max_score: value || 100 })}
-                min={0}
-                style={{ width: '100%' }}
-              />
-            </Col>
-            <Col span={8}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>权重</label>
-              <InputNumber
-                value={formData.weight}
-                onChange={(value) => setFormData({ ...formData, weight: value || 1 })}
-                min={0.1}
-                step={0.1}
-                style={{ width: '100%' }}
+            <Col span={24}>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>工作流ID</label>
+              <Input
+                value={formData.workflow_id}
+                onChange={(e) => setFormData({ ...formData, workflow_id: e.target.value })}
+                placeholder="Dify 工作流 ID"
               />
             </Col>
           </Row>
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
-              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>描述</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>评审项内容（Markdown格式）</label>
+                <Button size="small" icon={<EyeOutlined />} onClick={handlePreview}>
+                  预览
+                </Button>
+              </div>
               <Input.TextArea
-                value={formData.item_description}
-                onChange={(e) => setFormData({ ...formData, item_description: e.target.value })}
-                placeholder="请输入评审项描述"
-                rows={3}
+                value={formData.item_content}
+                onChange={(e) => setFormData({ ...formData, item_content: e.target.value })}
+                placeholder="支持 Markdown 格式，如：\n\n## 评审标准\n\n- 标准一\n- 标准二\n\n**重要说明：** ..."
+                rows={6}
               />
             </Col>
           </Row>
+
+          {/* 文件列表 */}
+          {editingItem && (
+            <>
+              <Divider style={{ marginTop: 20, marginBottom: 16 }}>关联文件</Divider>
+              <Row gutter={16}>
+                <Col span={24}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text strong>已绑定文件</Text>
+                    <Button size="small" type="primary" icon={<PlusOutlined />} onClick={handleAddFile}>
+                      添加文件
+                    </Button>
+                  </div>
+                  
+                  {currentItemFiles.length === 0 ? (
+                    <Empty 
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description={<Text type="secondary">暂无绑定文件</Text>}
+                      style={{ margin: 0 }}
+                    />
+                  ) : (
+                    <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e8e8e8', borderRadius: 4 }}>
+                      {currentItemFiles.map(file => (
+                        <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: currentItemFiles[currentItemFiles.length - 1]?.id === file.id ? 'none' : '1px solid #f0f0f0' }}>
+                          <span style={{ marginRight: 10, color: '#1890ff' }}>{getFileIcon(file.file_type)}</span>
+                          <div style={{ flex: 1 }}>
+                            <Text strong>{file.file_name}</Text>
+                            <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                              <Text type="secondary" style={{ fontSize: 12 }}>{getFileSize(file.file_size)}</Text>
+                              {file.description && <Text type="secondary" style={{ fontSize: 12 }}>{file.description}</Text>}
+                            </div>
+                          </div>
+                          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveFile(file.id)} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Col>
+              </Row>
+            </>
+          )}
+
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
               <Space>
@@ -305,6 +421,29 @@ const EvaluationItemManager: React.FC = () => {
               </Space>
             </Col>
           </Row>
+        </div>
+      </Modal>
+
+      {/* 预览模态框 */}
+      <Modal
+        title="评审内容预览"
+        visible={showPreview}
+        footer={null}
+        onCancel={() => setShowPreview(false)}
+        width={700}
+      >
+        <div style={{ padding: 16 }}>
+          <div style={{ 
+            minHeight: 300, 
+            padding: 20, 
+            backgroundColor: '#fafafa', 
+            borderRadius: 8,
+            whiteSpace: 'pre-wrap',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            lineHeight: 1.6
+          }}>
+            {previewContent || '暂无内容'}
+          </div>
         </div>
       </Modal>
     </div>

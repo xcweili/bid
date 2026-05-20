@@ -916,13 +916,11 @@ async def preview_file(package_id: int, file_id: int):
         # 获取完整文件路径
         src_dir = Path(__file__).parent.parent
         
-        # 清理文件路径，移除可能包含的 pkg_N\ 前缀
+        # 数据库中存储的是相对于 pkg_{package_id} 目录的相对路径
+        # 例如：投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md
         file_path_str = file.file_path
-        if file_path_str.startswith(f"pkg_{package_id}\\"):
-            file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
-        elif file_path_str.startswith(f"pkg_{package_id}/"):
-            file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
         
+        # 构建完整文件路径
         file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
         
         if not file_path.exists():
@@ -979,13 +977,10 @@ async def get_file_content(package_id: int, file_id: int):
         # 获取完整文件路径
         src_dir = Path(__file__).parent.parent
         
-        # 清理文件路径，移除可能包含的 pkg_N\ 前缀
+        # 数据库中存储的是相对于 pkg_{package_id} 目录的相对路径
         file_path_str = file.file_path
-        if file_path_str.startswith(f"pkg_{package_id}\\"):
-            file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
-        elif file_path_str.startswith(f"pkg_{package_id}/"):
-            file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
         
+        # 构建完整文件路径
         file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
         
         if not file_path.exists():
@@ -1177,13 +1172,10 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
                 # 获取完整文件路径
                 src_dir = Path(__file__).parent.parent
                 
-                # 清理文件路径，移除可能包含的 pkg_N\ 前缀
+                # 数据库中存储的是相对于 pkg_{package_id} 目录的相对路径
                 file_path_str = bidder_file.file_path
-                if file_path_str.startswith(f"pkg_{package_id}\\"):
-                    file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
-                elif file_path_str.startswith(f"pkg_{package_id}/"):
-                    file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
                 
+                # 构建完整文件路径
                 file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
                 
                 if file_path.exists():
@@ -1330,9 +1322,14 @@ async def run_dify_evaluation(package_id: int):
         
         async def evaluate_item(pi, item):
             """评估单个评审项下的所有公司"""
+            # 获取评审项配置的参数
+            api_key = item.api_key
+            base_url = item.base_url
             workflow_id = item.workflow_id
-            if not workflow_id:
-                logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 未配置 workflow_id，跳过")
+            
+            # 检查 API Key
+            if not api_key:
+                logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 未配置 API Key，跳过")
                 return
             
             try:
@@ -1350,18 +1347,18 @@ async def run_dify_evaluation(package_id: int):
                     
                     file_infos = []
                     for md_file in md_files:
+                        # 数据库中存储的是相对于 pkg_{package_id} 目录的相对路径
+                        # 例如：投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md
                         file_path_str = md_file.file_path
-                        if file_path_str.startswith(f"pkg_{package_id}\\"):
-                            file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
-                        elif file_path_str.startswith(f"pkg_{package_id}/"):
-                            file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
                         
+                        # 构建完整文件路径
                         file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
                         if not file_path.exists():
+                            logger.warning(f"[DIFY:{package_id}] 文件不存在：{file_path}")
                             continue
                         
-                        # 上传文件到 Dify
-                        file_info = await dify_service.upload_file(str(file_path), f"pkg_{package_no}")
+                        # 上传文件到 Dify（使用评审项配置的 api_key 和 base_url）
+                        file_info = await dify_service.upload_file(str(file_path), f"pkg_{package_no}", api_key, base_url)
                         if file_info:
                             file_infos.append({
                                 "file_name": md_file.file_name,
@@ -1381,8 +1378,9 @@ async def run_dify_evaluation(package_id: int):
                     logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 无有效文件")
                     return
                 
-                # 调用 Dify 工作流
-                logger.info(f"[DIFY:{package_id}] 执行评审项 {item.item_name} (workflow={workflow_id})，{len(company_files)} 家公司")
+                # 调用 Dify 工作流（使用评审项配置的参数）
+                call_type = "带 workflow_id" if workflow_id else "不带 workflow_id"
+                logger.info(f"[DIFY:{package_id}] 执行评审项 {item.item_name} ({call_type})，{len(company_files)} 家公司")
                 
                 inputs = {
                     "evaluation_item": item.item_name,
@@ -1390,7 +1388,7 @@ async def run_dify_evaluation(package_id: int):
                     "company_files": json.dumps(company_files, ensure_ascii=False)
                 }
                 
-                result = await dify_service.run_workflow(inputs, f"pkg_{package_no}", workflow_id)
+                result = await dify_service.run_workflow(inputs, f"pkg_{package_no}", workflow_id, "blocking", api_key, base_url)
                 
                 if not result:
                     logger.error(f"[DIFY:{package_id}] 评审项 {item.item_name} 工作流执行失败")
@@ -1547,7 +1545,8 @@ async def get_evaluation_progress(package_id: int):
                 "completed_items": completed,
                 "failed_items": failed,
                 "total_items": total_items,
-                "progress_pct": round(completed / total_items * 100, 1) if total_items > 0 else 0
+                "progress_pct": round(completed / total_items * 100, 1) if total_items > 0 else 0,
+                "total_score": bidder.total_score or 0.0
             })
         
         return {

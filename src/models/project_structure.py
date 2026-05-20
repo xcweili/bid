@@ -91,6 +91,7 @@ class Bidder(Base):
     package_id = Column(Integer, ForeignKey('packages.id'), nullable=False)
     company_name = Column(String(255), nullable=False)  # 公司名称
     social_credit_code = Column(String(50))  # 统一社会信用代码
+    total_score = Column(Float, default=0.0)  # 总分，默认0分
     
     # 关系
     package = relationship('Package', back_populates='bidders')
@@ -100,5 +101,6 @@ class Bidder(Base):
             "id": self.id,
             "package_id": self.package_id,
             "company_name": self.company_name,
-            "social_credit_code": self.social_credit_code
+            "social_credit_code": self.social_credit_code,
+            "total_score": self.total_score
         }

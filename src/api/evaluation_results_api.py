@@ -62,6 +62,26 @@ async def get_evaluation_result(result_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="评审结果不存在")
     return result.to_dict()
 
+def update_bidder_total_score(bidder_id: int, db: Session):
+    """更新投标人的总分"""
+    # 计算该投标人所有已完成评审的总分
+    total_score = db.query(EvaluationResult)\
+        .filter(EvaluationResult.bidder_id == bidder_id)\
+        .filter(EvaluationResult.evaluation_status == 'completed')\
+        .filter(EvaluationResult.score.isnot(None))\
+        .with_entities(EvaluationResult.score)\
+        .all()
+    
+    # 求和
+    total = sum([r[0] for r in total_score])
+    
+    # 更新投标人总分
+    bidder = db.query(Bidder).filter_by(id=bidder_id).first()
+    if bidder:
+        bidder.total_score = total
+        db.commit()
+
+
 @router.post("/evaluation-results", response_model=dict)
 async def create_evaluation_result(
     result: EvaluationResultCreate,
@@ -86,12 +106,16 @@ async def create_evaluation_result(
         item_id=result.item_id,
         score=result.score,
         score_reason=result.score_reason,
-        evaluation_basis=result.evaluation_basis
+        evaluation_basis=result.evaluation_basis,
+        evaluation_status='completed' if result.score else 'pending'
     )
     
     db.add(new_result)
     db.commit()
     db.refresh(new_result)
+    
+    # 更新投标人总分
+    update_bidder_total_score(result.bidder_id, db)
     
     return new_result.to_dict()
 
@@ -118,6 +142,9 @@ async def update_evaluation_result(
     db.commit()
     db.refresh(db_result)
     
+    # 更新投标人总分
+    update_bidder_total_score(db_result.bidder_id, db)
+    
     return db_result.to_dict()
 
 @router.delete("/evaluation-results/{result_id}")
@@ -127,8 +154,14 @@ async def delete_evaluation_result(result_id: int, db: Session = Depends(get_db)
     if not result:
         raise HTTPException(status_code=404, detail="评审结果不存在")
     
+    # 保存bidder_id用于更新总分
+    bidder_id = result.bidder_id
+    
     db.delete(result)
     db.commit()
+    
+    # 更新投标人总分
+    update_bidder_total_score(bidder_id, db)
     
     return {"message": "删除成功"}
 

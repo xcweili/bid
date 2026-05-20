@@ -6,8 +6,9 @@ import {
 import {
   FolderOpenOutlined, FileTextOutlined, RestOutlined,
   EyeOutlined, CheckCircleOutlined, ClockCircleOutlined,
-  WarningOutlined, SearchOutlined
+  WarningOutlined, SearchOutlined, FileSearchOutlined
 } from '@ant-design/icons';
+import PageHeader from '../components/PageHeader';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -57,6 +58,7 @@ interface FileNode {
   title: string;
   key: string;
   isLeaf?: boolean;
+  type?: 'folder' | 'file';
   children?: FileNode[];
 }
 
@@ -310,11 +312,12 @@ const FileViewer: React.FC = () => {
   return (
     <div>
       {/* 头部 */}
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Title level={2} style={{ margin: 0 }}>文件查看</Title>
-          <Text type="secondary">查看和管理投标人的文件解析状态</Text>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <PageHeader
+          title="文件查看"
+          description="查看和管理投标人的文件解析状态"
+          icon={<FileSearchOutlined />}
+        />
         <Button
           icon={<RestOutlined />}
           onClick={() => fetchProjects().then(data => {

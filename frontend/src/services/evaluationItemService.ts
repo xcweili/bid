@@ -4,14 +4,23 @@ export interface EvaluationItem {
   id: number;
   item_code: string;
   item_name: string;
-  item_description?: string;
-  max_score: number;
-  min_score: number;
-  weight: number;
+  item_content?: string;
   material_category?: string;
   is_active: boolean;
+  workflow_id?: string;
   created_at?: string;
   updated_at?: string;
+  files?: FileInfo[];
+}
+
+export interface FileInfo {
+  id: number;
+  file_name: string;
+  file_path: string;
+  file_type?: string;
+  file_size?: number;
+  description?: string;
+  created_at?: string;
 }
 
 export interface PackageItemConfig {
@@ -19,13 +28,19 @@ export interface PackageItemConfig {
   package_id: number;
   item_id: number;
   is_required: boolean;
-  custom_weight?: number;
 }
 
 export interface PackageItemWithDetails extends EvaluationItem {
   is_required: boolean;
-  custom_weight?: number;
   package_item_id: number;
+}
+
+export interface FileCreateRequest {
+  file_name: string;
+  file_path: string;
+  file_type?: string;
+  file_size?: number;
+  description?: string;
 }
 
 export const evaluationItemService = {
@@ -35,20 +50,20 @@ export const evaluationItemService = {
     return response.data;
   },
 
-  // 获取单个评审项
+  // 获取单个评审项（包含文件列表）
   getItem: async (itemId: number): Promise<EvaluationItem> => {
     const response = await api.get(`/evaluation-items/${itemId}`);
     return response.data;
   },
 
   // 创建评审项
-  createItem: async (item: Omit<EvaluationItem, 'id' | 'created_at' | 'updated_at'>): Promise<EvaluationItem> => {
+  createItem: async (item: Omit<EvaluationItem, 'id' | 'created_at' | 'updated_at' | 'files'>): Promise<EvaluationItem> => {
     const response = await api.post('/evaluation-items', item);
     return response.data;
   },
 
   // 更新评审项
-  updateItem: async (itemId: number, item: Partial<EvaluationItem>): Promise<EvaluationItem> => {
+  updateItem: async (itemId: number, item: Partial<Omit<EvaluationItem, 'id' | 'created_at' | 'updated_at' | 'files'>>): Promise<EvaluationItem> => {
     const response = await api.put(`/evaluation-items/${itemId}`, item);
     return response.data;
   },
@@ -78,5 +93,23 @@ export const evaluationItemService = {
   // 移除包的评审项配置
   removePackageItem: async (packageId: number, itemId: number): Promise<void> => {
     await api.delete(`/packages/${packageId}/items/${itemId}`);
+  },
+
+  // 为评审项添加文件
+  addFile: async (itemId: number, file: FileCreateRequest): Promise<EvaluationItem> => {
+    const response = await api.post(`/evaluation-items/${itemId}/files`, file);
+    return response.data;
+  },
+
+  // 从评审项移除文件
+  removeFile: async (itemId: number, fileId: number): Promise<EvaluationItem> => {
+    const response = await api.delete(`/evaluation-items/${itemId}/files/${fileId}`);
+    return response.data;
+  },
+
+  // 获取评审项绑定的文件列表
+  getFiles: async (itemId: number): Promise<FileInfo[]> => {
+    const response = await api.get(`/evaluation-items/${itemId}/files`);
+    return response.data;
   }
 };

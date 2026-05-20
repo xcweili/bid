@@ -9,6 +9,7 @@ import {
   FolderOpenOutlined, InboxOutlined, BankOutlined,
   ReloadOutlined, RightOutlined
 } from '@ant-design/icons';
+import PageHeader from '../components/PageHeader';
 
 const { Title, Text } = Typography;
 
@@ -227,14 +228,11 @@ const ProjectList: React.FC = () => {
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <BankOutlined /> 项目管理
-        </Title>
-        <Text type="secondary" style={{ marginLeft: 12 }}>
-          管理项目、标段和包的层级结构
-        </Text>
-      </div>
+      <PageHeader
+        title="项目管理"
+        description="管理项目、标段和包的层级结构"
+        icon={<BankOutlined />}
+      />
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         {stats.map((stat, index) => (

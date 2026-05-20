@@ -12,28 +12,43 @@ class DifyService:
     """Dify API 封装"""
 
     def __init__(self):
-        self.api_key = config.DIFY_API_KEY
-        self.base_url = config.DIFY_BASE_URL.rstrip("/")
-        self.workflow_id = config.DIFY_WORKFLOW_ID
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}"
+        self.default_api_key = config.DIFY_API_KEY
+        self.default_base_url = config.DIFY_BASE_URL.rstrip("/")
+        self.default_workflow_id = config.DIFY_WORKFLOW_ID
+    
+    def _get_headers(self, api_key: str = None) -> Dict[str, str]:
+        """获取请求头"""
+        key = api_key or self.default_api_key
+        return {
+            "Authorization": f"Bearer {key}"
         }
+    
+    def _get_base_url(self, base_url: str = None) -> str:
+        """获取基础URL，支持配置或默认值"""
+        if base_url:
+            return base_url.rstrip("/")
+        # 默认地址
+        return "http://10.255.216.2:8083/v1"
 
-    async def upload_file(self, file_path: str, user: str) -> Optional[Dict[str, Any]]:
+    async def upload_file(self, file_path: str, user: str, api_key: str = None, base_url: str = None) -> Optional[Dict[str, Any]]:
         """上传文件到 Dify
         
         Args:
             file_path: 本地文件路径
             user: 用户标识
+            api_key: 自定义 API Key（可选）
+            base_url: 自定义基础地址（可选）
             
         Returns:
             Dify 返回的文件信息，包含 id
         """
-        if not self.api_key:
-            logger.error("DIFY_API_KEY 未配置")
+        key = api_key or self.default_api_key
+        if not key:
+            logger.error("API Key 未配置")
             return None
 
-        url = f"{self.base_url}/files/upload"
+        url = f"{self._get_base_url(base_url)}/files/upload"
+        headers = self._get_headers(api_key)
         
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -43,7 +58,7 @@ class DifyService:
                     
                     response = await client.post(
                         url,
-                        headers=self.headers,
+                        headers=headers,
                         files=files,
                         data=data
                     )
@@ -64,37 +79,57 @@ class DifyService:
         inputs: Dict[str, Any],
         user: str,
         workflow_id: str = None,
-        response_mode: str = "blocking"
+        response_mode: str = "blocking",
+        api_key: str = None,
+        base_url: str = None
     ) -> Optional[Dict[str, Any]]:
         """执行 Dify 工作流
         
         Args:
             inputs: 工作流输入参数，包含文件 ID 等
             user: 用户标识
-            workflow_id: Dify 工作流 ID，不传则使用默认的
+            workflow_id: Dify 工作流 ID（可选），配置后使用带 workflow_id 的调用方式
             response_mode: 响应模式 (blocking/streaming)
+            api_key: 自定义 API Key（可选）
+            base_url: 自定义基础地址（可选）
             
         Returns:
             工作流执行结果
         """
-        wid = workflow_id or self.workflow_id
-        if not self.api_key or not wid:
-            logger.error("DIFY_API_KEY 或 workflow_id 未配置")
+        key = api_key or self.default_api_key
+        if not key:
+            logger.error("API Key 未配置")
             return None
 
-        url = f"{self.base_url}/workflows/run"
+        url_base = self._get_base_url(base_url)
+        headers = {**self._get_headers(api_key), "Content-Type": "application/json"}
         
-        payload = {
-            "inputs": inputs,
-            "user": user,
-            "response_mode": response_mode
-        }
+        # 根据是否配置 workflow_id 选择调用方式
+        wid = workflow_id or self.default_workflow_id
+        if wid:
+            # 方式1: 配置了 workflow_id，使用 /v1/workflows/{workflow_id}/run
+            url = f"{url_base}/workflows/{wid}/run"
+            payload = {
+                "inputs": inputs,
+                "user": user,
+                "response_mode": response_mode
+            }
+            logger.info(f"使用带 workflow_id 的调用方式: {url}")
+        else:
+            # 方式2: 未配置 workflow_id，使用 /v1/workflows/run
+            url = f"{url_base}/workflows/run"
+            payload = {
+                "inputs": inputs,
+                "user": user,
+                "response_mode": response_mode
+            }
+            logger.info(f"使用不带 workflow_id 的调用方式: {url}")
 
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     url,
-                    headers={**self.headers, "Content-Type": "application/json"},
+                    headers=headers,
                     json=payload
                 )
                 
@@ -114,7 +149,10 @@ class DifyService:
         file_path: str,
         bidder_name: str,
         file_name: str,
-        package_no: str
+        package_no: str,
+        api_key: str = None,
+        base_url: str = None,
+        workflow_id: str = None
     ) -> Optional[Dict[str, Any]]:
         """评估单个投标人文件：上传文件 + 执行工作流
         
@@ -123,6 +161,9 @@ class DifyService:
             bidder_name: 投标人名称
             file_name: 文件名
             package_no: 包号
+            api_key: 自定义 API Key（可选）
+            base_url: 自定义基础地址（可选）
+            workflow_id: 自定义工作流ID（可选）
             
         Returns:
             工作流执行结果
@@ -130,7 +171,7 @@ class DifyService:
         user = f"pkg_{package_no}"
         
         # 1. 上传文件
-        file_info = await self.upload_file(file_path, user)
+        file_info = await self.upload_file(file_path, user, api_key, base_url)
         if not file_info:
             return None
         
@@ -143,7 +184,7 @@ class DifyService:
             "file_id": file_id
         }
         
-        result = await self.run_workflow(inputs, user)
+        result = await self.run_workflow(inputs, user, workflow_id, "blocking", api_key, base_url)
         return result
 
 

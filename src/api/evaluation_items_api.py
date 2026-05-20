@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from models.evaluation_items import EvaluationItem, PackageItem
+from models.evaluation_items import EvaluationItem, PackageItem, File
 from models.project_structure import Package
 from sqlalchemy.orm import Session, joinedload
 from models.database import get_db
@@ -13,23 +13,23 @@ router = APIRouter(prefix="/api", tags=["评审项管理"])
 class EvaluationItemCreate(BaseModel):
     item_code: str = Field(..., description="评审项编号")
     item_name: str = Field(..., description="评审项名称")
-    item_description: Optional[str] = Field(None, description="评审项描述")
-    max_score: float = Field(100.0, description="最高分")
-    min_score: float = Field(0.0, description="最低分")
-    weight: float = Field(1.0, description="权重")
+    item_content: Optional[str] = Field(None, description="评审项内容（markdown格式）")
     material_category: Optional[str] = Field(None, description="物资品类")
     is_active: bool = Field(True, description="是否启用")
+    workflow_id: Optional[str] = Field(None, description="工作流ID")
+    api_key: Optional[str] = Field(None, description="Dify API Key")
+    base_url: Optional[str] = Field(None, description="Dify API 基础地址")
 
 
 class EvaluationItemUpdate(BaseModel):
     item_code: Optional[str] = Field(None, description="评审项编号")
     item_name: Optional[str] = Field(None, description="评审项名称")
-    item_description: Optional[str] = Field(None, description="评审项描述")
-    max_score: Optional[float] = Field(None, description="最高分")
-    min_score: Optional[float] = Field(None, description="最低分")
-    weight: Optional[float] = Field(None, description="权重")
+    item_content: Optional[str] = Field(None, description="评审项内容（markdown格式）")
     material_category: Optional[str] = Field(None, description="物资品类")
     is_active: Optional[bool] = Field(None, description="是否启用")
+    workflow_id: Optional[str] = Field(None, description="工作流ID")
+    api_key: Optional[str] = Field(None, description="Dify API Key")
+    base_url: Optional[str] = Field(None, description="Dify API 基础地址")
 
 
 class PackageItemsSet(BaseModel):
@@ -38,7 +38,14 @@ class PackageItemsSet(BaseModel):
 
 class PackageItemUpdate(BaseModel):
     is_required: Optional[bool] = Field(None, description="是否必填")
-    custom_weight: Optional[float] = Field(None, description="自定义权重")
+
+
+class FileCreate(BaseModel):
+    file_name: str = Field(..., description="文件名")
+    file_path: str = Field(..., description="文件路径")
+    file_type: Optional[str] = Field(None, description="文件类型")
+    file_size: Optional[int] = Field(None, description="文件大小")
+    description: Optional[str] = Field(None, description="文件描述")
 
 
 @router.get("/evaluation-items", response_model=List[dict])
@@ -50,11 +57,11 @@ def get_evaluation_items(db: Session = Depends(get_db)):
 
 @router.get("/evaluation-items/{item_id}", response_model=dict)
 def get_evaluation_item(item_id: int, db: Session = Depends(get_db)):
-    """获取单个评审项"""
-    item = db.query(EvaluationItem).filter_by(id=item_id).first()
+    """获取单个评审项（包含文件列表）"""
+    item = db.query(EvaluationItem).options(joinedload(EvaluationItem.files)).filter_by(id=item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="评审项不存在")
-    return item.to_dict()
+    return item.to_dict_with_files()
 
 
 @router.post("/evaluation-items", response_model=dict, status_code=201)
@@ -70,12 +77,12 @@ def create_evaluation_item(item: EvaluationItemCreate, db: Session = Depends(get
     new_item = EvaluationItem(
         item_code=item.item_code,
         item_name=item.item_name,
-        item_description=item.item_description,
-        max_score=item.max_score,
-        min_score=item.min_score,
-        weight=item.weight,
+        item_content=item.item_content,
         material_category=item.material_category,
-        is_active=item.is_active
+        is_active=item.is_active,
+        workflow_id=item.workflow_id,
+        api_key=item.api_key,
+        base_url=item.base_url
     )
     
     db.add(new_item)
@@ -100,18 +107,18 @@ def update_evaluation_item(item_id: int, item: EvaluationItemUpdate, db: Session
     
     if item.item_name is not None:
         db_item.item_name = item.item_name
-    if item.item_description is not None:
-        db_item.item_description = item.item_description
-    if item.max_score is not None:
-        db_item.max_score = item.max_score
-    if item.min_score is not None:
-        db_item.min_score = item.min_score
-    if item.weight is not None:
-        db_item.weight = item.weight
+    if item.item_content is not None:
+        db_item.item_content = item.item_content
     if item.material_category is not None:
         db_item.material_category = item.material_category
     if item.is_active is not None:
         db_item.is_active = item.is_active
+    if item.workflow_id is not None:
+        db_item.workflow_id = item.workflow_id
+    if item.api_key is not None:
+        db_item.api_key = item.api_key
+    if item.base_url is not None:
+        db_item.base_url = item.base_url
     
     db.commit()
     db.refresh(db_item)
@@ -146,7 +153,6 @@ def get_package_items(package_id: int, db: Session = Depends(get_db)):
     for pi in package.package_items:
         item_dict = pi.item.to_dict()
         item_dict['is_required'] = pi.is_required
-        item_dict['custom_weight'] = pi.custom_weight
         item_dict['package_item_id'] = pi.id
         items.append(item_dict)
     
@@ -184,8 +190,6 @@ def update_package_item(package_id: int, item_id: int, config: PackageItemUpdate
     
     if config.is_required is not None:
         pi.is_required = config.is_required
-    if config.custom_weight is not None:
-        pi.custom_weight = config.custom_weight
     
     db.commit()
     db.refresh(pi)
@@ -204,3 +208,54 @@ def remove_package_item(package_id: int, item_id: int, db: Session = Depends(get
     db.commit()
     
     return {"message": "评审项已移除"}
+
+
+@router.post("/evaluation-items/{item_id}/files", response_model=dict)
+def add_file_to_item(item_id: int, file: FileCreate, db: Session = Depends(get_db)):
+    """为评审项添加文件"""
+    item = db.query(EvaluationItem).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="评审项不存在")
+    
+    new_file = File(
+        file_name=file.file_name,
+        file_path=file.file_path,
+        file_type=file.file_type,
+        file_size=file.file_size,
+        description=file.description
+    )
+    
+    item.files.append(new_file)
+    db.commit()
+    db.refresh(item)
+    
+    return item.to_dict_with_files()
+
+
+@router.delete("/evaluation-items/{item_id}/files/{file_id}", response_model=dict)
+def remove_file_from_item(item_id: int, file_id: int, db: Session = Depends(get_db)):
+    """从评审项移除文件"""
+    item = db.query(EvaluationItem).options(joinedload(EvaluationItem.files)).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="评审项不存在")
+    
+    file_to_remove = next((f for f in item.files if f.id == file_id), None)
+    if not file_to_remove:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    item.files.remove(file_to_remove)
+    db.delete(file_to_remove)
+    db.commit()
+    db.refresh(item)
+    
+    return item.to_dict_with_files()
+
+
+@router.get("/evaluation-items/{item_id}/files", response_model=List[dict])
+def get_item_files(item_id: int, db: Session = Depends(get_db)):
+    """获取评审项绑定的文件列表"""
+    item = db.query(EvaluationItem).options(joinedload(EvaluationItem.files)).filter_by(id=item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="评审项不存在")
+    
+    return [file.to_dict() for file in item.files]

@@ -589,16 +589,18 @@ const ProjectDetail: React.FC = () => {
                     render: (category: string) => category || '-'
                   },
                   {
-                    title: '评分范围',
-                    width: 120,
-                    render: (_: any, record: EvaluationItem) => (
-                      <span>{record.min_score} - {record.max_score} 分</span>
+                    title: '工作流ID',
+                    dataIndex: 'workflow_id',
+                    width: 200,
+                    render: (workflowId: string) => (
+                      workflowId ? (
+                        <Tag color="purple" style={{ fontSize: 12 }}>
+                          {workflowId}
+                        </Tag>
+                      ) : (
+                        <Text type="secondary">-</Text>
+                      )
                     )
-                  },
-                  {
-                    title: '权重',
-                    dataIndex: 'weight',
-                    width: 80
                   }
                 ]}
                 dataSource={filteredItems}
