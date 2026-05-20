@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Button, Typography, Table, Modal, Form, Input,
-  message, Space, Select, Switch, Row, Col, Tag, Tooltip
+  message, Space, Select, Switch, Row, Col, Tag, Tooltip, List
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined
@@ -20,6 +20,7 @@ const RuleConfig: React.FC = () => {
   const [editingItem, setEditingItem] = useState<EvaluationItem | null>(null);
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
+  const [newFileName, setNewFileName] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -63,9 +64,47 @@ const RuleConfig: React.FC = () => {
       workflow_id: item.workflow_id,
       item_content: item.item_content,
       api_key: item.api_key,
-      base_url: item.base_url
+      base_url: item.base_url,
+      files: item.files || []
     });
     setShowModal(true);
+  };
+
+  const handleAddFileName = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && newFileName.trim()) {
+      e.preventDefault();
+      if (!editingItem) {
+        message.warning('请先保存评审项');
+        return;
+      }
+      try {
+        const fileData = {
+          file_name: newFileName.trim(),
+          file_path: '',
+          file_type: 'pdf',
+          description: ''
+        };
+        const result = await evaluationItemService.addFile(editingItem.id, fileData);
+        form.setFieldsValue({ files: result.files });
+        setNewFileName('');
+        message.success('文件添加成功');
+      } catch (error) {
+        console.error('添加文件失败:', error);
+        message.error('添加文件失败');
+      }
+    }
+  };
+
+  const handleRemoveFile = async (fileId: number) => {
+    if (!editingItem) return;
+    try {
+      const result = await evaluationItemService.removeFile(editingItem.id, fileId);
+      form.setFieldsValue({ files: result.files });
+      message.success('文件移除成功');
+    } catch (error) {
+      console.error('移除文件失败:', error);
+      message.error('移除文件失败');
+    }
   };
 
   const handleDelete = (item: EvaluationItem) => {
@@ -154,19 +193,24 @@ const RuleConfig: React.FC = () => {
       )
     },
     {
-      title: '工作流ID',
-      dataIndex: 'workflow_id',
-      key: 'workflow_id',
+      title: '绑定文件',
+      dataIndex: 'files',
+      key: 'files',
       width: 200,
-      render: (workflowId: string) => (
-        workflowId ? (
-          <Tag color="purple" style={{ fontSize: 12 }}>
-            {workflowId}
-          </Tag>
-        ) : (
-          <Text type="secondary">-</Text>
-        )
-      )
+      render: (files: any[]) => {
+        if (!files || files.length === 0) {
+          return <Text type="secondary">-</Text>;
+        }
+        const fileNames = files.map(f => f.file_name).slice(0, 3);
+        const moreCount = files.length > 3 ? ` +${files.length - 3}` : '';
+        return (
+          <Tooltip title={files.map(f => f.file_name).join('\n')}>
+            <Tag color="blue" style={{ fontSize: 12 }}>
+              {fileNames.join(', ')}{moreCount}
+            </Tag>
+          </Tooltip>
+        );
+      }
     },
     {
       title: '状态',
@@ -279,13 +323,6 @@ const RuleConfig: React.FC = () => {
           </Form.Item>
 
           <Form.Item
-            name="workflow_id"
-            label="工作流ID"
-          >
-            <Input placeholder="Dify 工作流 ID（选填，配置后使用带workflow_id的调用方式）" />
-          </Form.Item>
-
-          <Form.Item
             name="api_key"
             label="Dify API Key"
           >
@@ -302,6 +339,67 @@ const RuleConfig: React.FC = () => {
             />
             <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
               留空则使用默认地址：http://10.255.216.2:8083/v1
+            </Text>
+          </Form.Item>
+
+          <Form.Item
+            name="workflow_id"
+            label="工作流ID"
+          >
+            <Input placeholder="Dify 工作流 ID（选填，配置后使用带workflow_id的调用方式）" />
+          </Form.Item>
+
+          <Form.Item label="绑定文件">
+            <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 4, padding: 8, marginBottom: 8 }}>
+              {form.getFieldValue('files')?.length > 0 ? (
+                <List
+                  dataSource={form.getFieldValue('files')}
+                  renderItem={(file: any) => (
+                    <List.Item
+                      key={file.id || file.file_name}
+                      style={{ padding: '4px 0' }}
+                      extra={
+                        <Button
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={() => handleRemoveFile(file.id)}
+                        />
+                      }
+                    >
+                      <div style={{ fontSize: 14 }}>{file.file_name}</div>
+                    </List.Item>
+                  )}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', color: '#999', padding: 16 }}>
+                  暂无绑定文件
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input
+                value={newFileName}
+                onChange={(e) => setNewFileName(e.target.value)}
+                onKeyDown={handleAddFileName}
+                placeholder="输入文件名，回车确认添加"
+                style={{ flex: 1 }}
+              />
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  if (newFileName.trim()) {
+                    const event = { key: 'Enter', preventDefault: () => {} } as unknown as React.KeyboardEvent;
+                    handleAddFileName(event);
+                  }
+                }}
+              >
+                添加
+              </Button>
+            </div>
+            <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+              评审时将自动从投标人文件夹下查找同名的 .md 文件
             </Text>
           </Form.Item>
 

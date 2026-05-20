@@ -8,6 +8,8 @@ export interface EvaluationItem {
   material_category?: string;
   is_active: boolean;
   workflow_id?: string;
+  api_key?: string;
+  base_url?: string;
   created_at?: string;
   updated_at?: string;
   files?: FileInfo[];

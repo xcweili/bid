@@ -50,9 +50,9 @@ class FileCreate(BaseModel):
 
 @router.get("/evaluation-items", response_model=List[dict])
 def get_evaluation_items(db: Session = Depends(get_db)):
-    """获取所有评审项"""
-    items = db.query(EvaluationItem).all()
-    return [item.to_dict() for item in items]
+    """获取所有评审项（包含文件列表）"""
+    items = db.query(EvaluationItem).options(joinedload(EvaluationItem.files)).all()
+    return [item.to_dict_with_files() for item in items]
 
 
 @router.get("/evaluation-items/{item_id}", response_model=dict)

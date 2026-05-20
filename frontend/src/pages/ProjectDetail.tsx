@@ -589,18 +589,23 @@ const ProjectDetail: React.FC = () => {
                     render: (category: string) => category || '-'
                   },
                   {
-                    title: '工作流ID',
-                    dataIndex: 'workflow_id',
+                    title: '绑定文件',
+                    dataIndex: 'files',
                     width: 200,
-                    render: (workflowId: string) => (
-                      workflowId ? (
-                        <Tag color="purple" style={{ fontSize: 12 }}>
-                          {workflowId}
-                        </Tag>
-                      ) : (
-                        <Text type="secondary">-</Text>
-                      )
-                    )
+                    render: (files: any[]) => {
+                      if (!files || files.length === 0) {
+                        return <Text type="secondary">-</Text>;
+                      }
+                      const fileNames = files.map(f => f.file_name).slice(0, 2);
+                      const moreCount = files.length > 2 ? ` +${files.length - 2}` : '';
+                      return (
+                        <Tooltip title={files.map(f => f.file_name).join('\n')}>
+                          <Tag color="blue" style={{ fontSize: 12 }}>
+                            {fileNames.join(', ')}{moreCount}
+                          </Tag>
+                        </Tooltip>
+                      );
+                    }
                   }
                 ]}
                 dataSource={filteredItems}

@@ -179,7 +179,7 @@ const ProjectList: React.FC = () => {
       key: 'section_count',
       width: 100,
       render: (count: number) => (
-        <Statistic value={count} suffix="个" />
+        <span style={{ fontSize: 14, color: '#1a1a1a' }}>{count}</span>
       )
     },
     {
