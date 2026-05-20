@@ -30,6 +30,11 @@ class Config:
     MAX_CONCURRENT_TASKS = int(os.getenv("MAX_CONCURRENT_TASKS", "3"))
     LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
     
+    # Dify API 配置
+    DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
+    DIFY_BASE_URL = os.getenv("DIFY_BASE_URL", "https://api.dify.ai/v1")
+    DIFY_WORKFLOW_ID = os.getenv("DIFY_WORKFLOW_ID", "")
+    
     @classmethod
     def init_app(cls):
         """初始化应用目录"""

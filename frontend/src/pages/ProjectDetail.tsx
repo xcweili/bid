@@ -173,16 +173,23 @@ const ProjectDetail: React.FC = () => {
     
     Modal.confirm({
       title: '启动评审',
-      content: `确定要对 "${selectedPackage.package_no}" 启动 AI 评审吗？`,
+      content: `确定要对 "${selectedPackage.package_no}" 启动 AI 评审吗？将通过 Dify 工作流进行评审。`,
       okText: '启动',
       cancelText: '取消',
       onOk: async () => {
         try {
-          // 这里需要调用启动评审的API
-          message.success('评审已启动');
-          fetchProject();
+          const res = await fetch(`/api/packages/${selectedPackage.id}/start-evaluation`, {
+            method: 'POST'
+          });
+          const data = await res.json();
+          if (res.ok) {
+            message.success(data.message || '评审已启动');
+            fetchProject();
+          } else {
+            message.error(data.detail || '启动失败');
+          }
         } catch (error) {
-          message.error('启动失败');
+          message.error('启动失败，请检查后端服务');
         }
       }
     });
@@ -452,6 +459,15 @@ const ProjectDetail: React.FC = () => {
                             <Space size="small">
                               <Button
                                 size="small"
+                                icon={<EyeOutlined />}
+                                onClick={() => {
+                                  window.location.href = `/projects/${project.id}/packages/${record.id}/evaluation`;
+                                }}
+                              >
+                                查看详情
+                              </Button>
+                              <Button
+                                size="small"
                                 icon={<SettingOutlined />}
                                 onClick={() => {
                                   setSelectedPackage(record);
@@ -460,15 +476,6 @@ const ProjectDetail: React.FC = () => {
                                 }}
                               >
                                 配置评审项
-                              </Button>
-                              <Button
-                                size="small"
-                                icon={<EyeOutlined />}
-                                onClick={() => {
-                                  window.location.href = `/projects/${project.id}/packages/${record.id}/evaluation`;
-                                }}
-                              >
-                                查看详情
                               </Button>
                               <Button
                                 size="small"
