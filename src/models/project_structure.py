@@ -63,6 +63,7 @@ class Package(Base):
     package_no = Column(String(100), nullable=False)  # 包号
     status = Column(String(50), default='pending')  # pending, processing, completed
     zip_file_path = Column(String(500))  # 标书文件路径
+    evaluation_status = Column(String(50), default='pending')  # pending, evaluating, completed, failed
     
     # 关系
     section = relationship('Section', back_populates='packages')
@@ -75,6 +76,7 @@ class Package(Base):
             "section_id": self.section_id,
             "package_no": self.package_no,
             "status": self.status,
+            "evaluation_status": self.evaluation_status,
             "zip_file_path": self.zip_file_path,
             "bidder_count": len(self.bidders) if self.bidders else 0,
             "item_count": len(self.package_items) if self.package_items else 0

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Typography, Tag, Button, Space, message,
-  Table, Empty, Input, Select
+  Table, Empty, Input, Select, Progress, Collapse, Spin, Descriptions
 } from 'antd';
 import {
-  SearchOutlined, RestOutlined
+  SearchOutlined, RestOutlined, RightOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
+  FolderOpenOutlined, InboxOutlined, FileTextOutlined
 } from '@ant-design/icons';
-import { evaluationResultService, EvaluationResult } from '../services/evaluationResultService';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { Panel } = Collapse;
 
 interface Project {
   id: number;
@@ -22,329 +24,333 @@ interface Section {
   id: number;
   section_code: string;
   section_name: string;
-  packages: Package[];
+  packages: PackageSummary[];
 }
 
-interface Package {
+interface PackageSummary {
   id: number;
   package_no: string;
-  bidders: Bidder[];
+  bidders: { id: number; company_name: string }[];
 }
 
-interface Bidder {
-  id: number;
-  company_name: string;
+interface EvaluationProgress {
+  package_id: number;
+  package_no: string;
+  evaluation_status: string;
+  total_bidders: number;
+  total_items: number;
+  bidder_progress: BidderProgress[];
 }
+
+interface BidderProgress {
+  bidder_id: number;
+  company_name: string;
+  completed_items: number;
+  failed_items: number;
+  total_items: number;
+  progress_pct: number;
+}
+
+interface BidderItemDetail {
+  id: number;
+  item_code: string;
+  item_name: string;
+  score: number;
+  score_reason: string;
+  evaluation_basis: string;
+  evaluation_status: string;
+}
+
+interface BidderDetail {
+  bidder_id: number;
+  company_name: string;
+  items: BidderItemDetail[];
+}
+
+const getEvalStatusConfig = (status: string) => {
+  const map: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
+    pending: { color: 'default', text: '待评审', icon: null },
+    evaluating: { color: 'processing', text: '评审中', icon: <LoadingOutlined /> },
+    completed: { color: 'success', text: '已完成', icon: <CheckCircleOutlined /> },
+    failed: { color: 'error', text: '失败', icon: <CloseCircleOutlined /> },
+  };
+  return map[status] || map.pending;
+};
 
 const EvaluationResults: React.FC = () => {
-  const [results, setResults] = useState<EvaluationResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchText, setSearchText] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
-  
-  // 级联筛选状态
-  const [selectedProject, setSelectedProject] = useState<number | undefined>();
-  const [selectedSection, setSelectedSection] = useState<number | undefined>();
-  const [selectedPackage, setSelectedPackage] = useState<number | undefined>();
-  const [selectedBidder, setSelectedBidder] = useState<number | undefined>();
+  const [progressMap, setProgressMap] = useState<Record<number, EvaluationProgress>>({});
+  const [loading, setLoading] = useState(false);
+  const [expandedPkgId, setExpandedPkgId] = useState<number | null>(null);
+  const [selectedBidderDetail, setSelectedBidderDetail] = useState<BidderDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
-    fetchResults();
-    fetchProjects();
+    fetchAll();
   }, []);
 
-  const fetchResults = async () => {
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const data = await evaluationResultService.getAllResults();
-      setResults(data);
-    } catch (error) {
-      console.error('获取评审结果失败:', error);
-      message.error('获取评审结果失败');
+      const res = await fetch('/api/projects');
+      const data: Project[] = await res.json();
+      setProjects(data);
+
+      const pkgIds: number[] = [];
+      data.forEach(proj => proj.sections.forEach(sec => sec.packages.forEach(pkg => pkgIds.push(pkg.id))));
+
+      const newProgressMap: Record<number, EvaluationProgress> = {};
+      await Promise.all(pkgIds.map(async (pid) => {
+        try {
+          const pr = await fetch(`/api/packages/${pid}/evaluation-progress`);
+          if (pr.ok) newProgressMap[pid] = await pr.json();
+        } catch { /* ignore */ }
+      }));
+      setProgressMap(newProgressMap);
+    } catch {
+      message.error('获取数据失败');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchProjects = async () => {
+  const loadBidderDetail = async (packageId: number, bidderId: number) => {
+    setDetailLoading(true);
     try {
-      const response = await fetch('/api/projects');
-      const data = await response.json();
-      setProjects(data);
-    } catch (error) {
-      console.error('获取项目列表失败:', error);
+      const res = await fetch(`/api/packages/${packageId}/evaluation-detail/${bidderId}`);
+      if (res.ok) {
+        setSelectedBidderDetail(await res.json());
+      }
+    } catch {
+      message.error('获取评审详情失败');
+    } finally {
+      setDetailLoading(false);
     }
   };
 
-  const handleRefresh = () => {
-    fetchResults();
-    fetchProjects();
+  const getPackageStatusTag = (pkgId: number) => {
+    const prog = progressMap[pkgId];
+    if (!prog) return <Tag>未开始</Tag>;
+    const cfg = getEvalStatusConfig(prog.evaluation_status);
+    return <Tag color={cfg.color} icon={cfg.icon as any}>{cfg.text}</Tag>;
   };
 
-  // 项目变更时重置后续筛选
-  const handleProjectChange = (value: number | undefined) => {
-    setSelectedProject(value);
-    setSelectedSection(undefined);
-    setSelectedPackage(undefined);
-    setSelectedBidder(undefined);
+  const getPackageCompaniesStatus = (pkgId: number) => {
+    const prog = progressMap[pkgId];
+    if (!prog) return '0/0';
+    const done = prog.bidder_progress.filter(b => b.progress_pct >= 100).length;
+    return `${done}/${prog.total_bidders}`;
   };
-
-  // 标段变更时重置后续筛选
-  const handleSectionChange = (value: number | undefined) => {
-    setSelectedSection(value);
-    setSelectedPackage(undefined);
-    setSelectedBidder(undefined);
-  };
-
-  // 包变更时重置公司筛选
-  const handlePackageChange = (value: number | undefined) => {
-    setSelectedPackage(value);
-    setSelectedBidder(undefined);
-  };
-
-  // 获取当前选中项目的标段列表
-  const currentSections = selectedProject 
-    ? projects.find(p => p.id === selectedProject)?.sections || []
-    : [];
-
-  // 获取当前选中标段的包列表
-  const currentPackages = selectedSection
-    ? currentSections.find(s => s.id === selectedSection)?.packages || []
-    : [];
-
-  // 获取当前选中包的投标人列表
-  const currentBidders = selectedPackage
-    ? currentPackages.find(p => p.id === selectedPackage)?.bidders || []
-    : [];
-
-  const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; text: string }> = {
-      pending: { color: 'default', text: '未评审' },
-      processing: { color: 'orange', text: '评审中' },
-      completed: { color: 'success', text: '已完成' },
-    };
-    return configs[status] || configs.pending;
-  };
-
-  const filteredResults = results.filter(result => {
-    // 搜索过滤
-    const matchSearch = searchText === '' || 
-      result.company_name.toLowerCase().includes(searchText.toLowerCase()) ||
-      result.item_code.toLowerCase().includes(searchText.toLowerCase()) ||
-      result.item_name.toLowerCase().includes(searchText.toLowerCase());
-    
-    // 级联筛选
-    const matchProject = !selectedProject || result.project_id === selectedProject;
-    const matchSection = !selectedSection || result.section_id === selectedSection;
-    const matchPackage = !selectedPackage || result.package_id === selectedPackage;
-    const matchBidder = !selectedBidder || result.bidder_id === selectedBidder;
-    
-    return matchSearch && matchProject && matchSection && matchPackage && matchBidder;
-  });
 
   return (
     <div>
-      {/* 头部 */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <Title level={2} style={{ margin: 0 }}>评审结果</Title>
-          <Text type="secondary">查看所有评审结果</Text>
+          <Title level={2} style={{ margin: 0 }}>评审详情</Title>
+          <Text type="secondary">按项目-标段-包维度查看评审进度和结果</Text>
         </div>
-        <Button
-          icon={<RestOutlined />}
-          onClick={handleRefresh}
-        >
-          刷新
-        </Button>
+        <Button icon={<RestOutlined />} onClick={fetchAll} loading={loading}>刷新</Button>
       </div>
 
-      {/* 筛选区域 */}
-      <Card style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Input.Search
-            placeholder="搜索投标公司、评审项编号或名称"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            style={{ width: 350 }}
-            allowClear
-            prefix={<SearchOutlined />}
-          />
-          
-          {/* 项目筛选 */}
-          <Select
-            placeholder="筛选项目"
-            value={selectedProject || undefined}
-            onChange={handleProjectChange}
-            style={{ width: 250 }}
-            allowClear
-          >
-            {projects.map(project => (
-              <Option key={project.id} value={project.id}>
-                {project.project_name} ({project.project_code})
-              </Option>
-            ))}
-          </Select>
+      <Spin spinning={loading}>
+        {projects.length === 0 && <Empty description="暂无项目数据" />}
 
-          {/* 标段筛选 - 选择项目后显示 */}
-          {selectedProject && (
-            <Select
-              placeholder="筛选标段"
-              value={selectedSection || undefined}
-              onChange={handleSectionChange}
-              style={{ width: 200 }}
-              allowClear
-            >
-              {currentSections.map(section => (
-                <Option key={section.id} value={section.id}>
+        {projects.map(project => (
+          <Card key={project.id} style={{ marginBottom: 16 }} title={
+            <Space>
+              <FolderOpenOutlined />
+              <span>{project.project_name} ({project.project_code})</span>
+            </Space>
+          }>
+            {project.sections.map(section => (
+              <div key={section.id} style={{ marginBottom: 16, marginLeft: 24 }}>
+                <Title level={5} style={{ color: '#666', marginBottom: 8 }}>
                   {section.section_name} ({section.section_code})
-                </Option>
-              ))}
-            </Select>
-          )}
+                </Title>
 
-          {/* 包筛选 - 选择标段后显示 */}
-          {selectedSection && (
-            <Select
-              placeholder="筛选包"
-              value={selectedPackage || undefined}
-              onChange={handlePackageChange}
-              style={{ width: 150 }}
-              allowClear
-            >
-              {currentPackages.map(pkg => (
-                <Option key={pkg.id} value={pkg.id}>
-                  {pkg.package_no}
-                </Option>
-              ))}
-            </Select>
-          )}
+                <Table
+                  dataSource={section.packages}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    {
+                      title: '包号', dataIndex: 'package_no', key: 'package_no', width: 120,
+                      render: (no: string) => <Text strong>{no}</Text>
+                    },
+                    {
+                      title: '评审状态', key: 'status', width: 120,
+                      render: (_: any, record: PackageSummary) => getPackageStatusTag(record.id)
+                    },
+                    {
+                      title: '公司进度', key: 'company_progress', width: 160,
+                      render: (_: any, record: PackageSummary) => {
+                        const prog = progressMap[record.id];
+                        return prog ? (
+                          <Tag color="blue">{getPackageCompaniesStatus(record.id)} 家公司</Tag>
+                        ) : <Tag>-</Tag>;
+                      }
+                    },
+                    {
+                      title: '操作', key: 'action', width: 120,
+                      render: (_: any, record: PackageSummary) => (
+                        <Button
+                          size="small"
+                          type="link"
+                          icon={<RightOutlined />}
+                          onClick={() => setExpandedPkgId(expandedPkgId === record.id ? null : record.id)}
+                        >
+                          {expandedPkgId === record.id ? '收起' : '查看详情'}
+                        </Button>
+                      )
+                    }
+                  ]}
+                />
 
-          {/* 公司筛选 - 选择包后显示 */}
-          {selectedPackage && (
-            <Select
-              placeholder="筛选公司"
-              value={selectedBidder || undefined}
-              onChange={(value) => setSelectedBidder(value)}
-              style={{ width: 200 }}
-              allowClear
-            >
-              {currentBidders.map(bidder => (
-                <Option key={bidder.id} value={bidder.id}>
-                  {bidder.company_name}
-                </Option>
-              ))}
-            </Select>
-          )}
-        </div>
-      </Card>
+                {expandedPkgId === section.packages.find(p => p.id === expandedPkgId)?.id && (
+                  <Card size="small" style={{ marginTop: 8, marginLeft: 40, backgroundColor: '#fafafa' }}>
+                    <EvalPackageDetail
+                      pkg={section.packages.find(p => p.id === expandedPkgId)!}
+                      progress={progressMap[expandedPkgId]}
+                      onSelectBidder={loadBidderDetail}
+                    />
+                  </Card>
+                )}
+              </div>
+            ))}
+          </Card>
+        ))}
+      </Spin>
 
-      {/* 评审结果表格 */}
-      <Card>
-        {filteredResults.length > 0 ? (
-          <Table
-            columns={[
-              {
-                title: '项目',
-                key: 'project',
-                width: 120,
-                render: () => <Tag color="blue">测试项目</Tag>
-              },
-              {
-                title: '标段',
-                key: 'section',
-                width: 120,
-                render: () => <Tag color="purple">信号系统标段</Tag>
-              },
-              {
-                title: '包',
-                key: 'package',
-                width: 100,
-                render: () => <Tag color="green">包1</Tag>
-              },
-              {
-                title: '投标公司',
-                dataIndex: 'company_name',
-                key: 'company_name',
-                width: 180
-              },
-              {
-                title: '评审项编号',
-                dataIndex: 'item_code',
-                key: 'item_code',
-                width: 120,
-                render: (code: string) => <Tag color="cyan">{code}</Tag>
-              },
-              {
-                title: '评审项名称',
-                dataIndex: 'item_name',
-                key: 'item_name',
-                width: 200
-              },
-              {
-                title: '评审阶段',
-                key: 'stage',
-                width: 100,
-                render: () => <Tag color="orange">详评</Tag>
-              },
-              {
-                title: '得分',
-                dataIndex: 'score',
-                key: 'score',
-                width: 100,
-                render: (score: number) => (
-                  <Tag color={score >= 60 ? 'green' : 'red'}>
-                    {score !== undefined ? score.toFixed(2) : '-'}
-                  </Tag>
-                )
-              },
-              {
-                title: '评分理由',
-                dataIndex: 'score_reason',
-                key: 'score_reason',
-                width: 250,
-                render: (reason: string) => (
-                  <span style={{ maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
-                    {reason || '-'}
-                  </span>
-                )
-              },
-              {
-                title: '评审状态',
-                dataIndex: 'evaluation_status',
-                key: 'evaluation_status',
-                width: 100,
-                render: (status: string) => {
-                  const config = getStatusConfig(status);
-                  return <Tag color={config.color}>{config.text}</Tag>;
-                }
-              },
-              {
-                title: '评审依据',
-                dataIndex: 'evaluation_basis',
-                key: 'evaluation_basis',
-                width: 200,
-                render: (basis: string) => (
-                  <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
-                    {basis || '-'}
-                  </span>
-                )
-              }
-            ]}
-            dataSource={filteredResults}
-            rowKey="id"
-            loading={loading}
-            pagination={{
-              defaultPageSize: 25,
-              pageSizeOptions: ['25', '50', '100'],
-              showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
-              showQuickJumper: true
-            }}
-          />
-        ) : (
-          <Empty description="暂无评审结果" />
-        )}
-      </Card>
+      {selectedBidderDetail && (
+        <Card
+          title={
+            <Space>
+              <FileTextOutlined />
+              <span>{selectedBidderDetail.company_name} - 评审详情</span>
+            </Space>
+          }
+          extra={<Button size="small" onClick={() => setSelectedBidderDetail(null)}>关闭</Button>}
+          style={{ marginTop: 16 }}
+        >
+          <Spin spinning={detailLoading}>
+            {selectedBidderDetail.items.length === 0 ? (
+              <Empty description="暂无评审结果" />
+            ) : (
+              <Table
+                dataSource={selectedBidderDetail.items}
+                rowKey="id"
+                pagination={false}
+                columns={[
+                  {
+                    title: '评审项编号', dataIndex: 'item_code', key: 'item_code', width: 120,
+                    render: (code: string) => <Tag color="cyan">{code}</Tag>
+                  },
+                  {
+                    title: '评审项名称', dataIndex: 'item_name', key: 'item_name', width: 180
+                  },
+                  {
+                    title: '得分', dataIndex: 'score', key: 'score', width: 100,
+                    render: (score: number) => (
+                      <Tag color={score && score >= 60 ? 'green' : score && score > 0 ? 'orange' : 'red'}>
+                        {score !== undefined && score !== null ? score.toFixed(2) : '-'}
+                      </Tag>
+                    )
+                  },
+                  {
+                    title: '评审状态', dataIndex: 'evaluation_status', key: 'status', width: 100,
+                    render: (s: string) => {
+                      const cfg = getEvalStatusConfig(s);
+                      return <Tag color={cfg.color}>{cfg.text}</Tag>;
+                    }
+                  },
+                  {
+                    title: '评分理由', dataIndex: 'score_reason', key: 'reason', width: 250,
+                    render: (t: string) => (
+                      <Text ellipsis={{ tooltip: t }} style={{ maxWidth: 240, display: 'inline-block' }}>
+                        {t || '-'}
+                      </Text>
+                    )
+                  },
+                  {
+                    title: '评审依据', dataIndex: 'evaluation_basis', key: 'basis', width: 250,
+                    render: (t: string) => (
+                      <Text ellipsis={{ tooltip: t }} style={{ maxWidth: 240, display: 'inline-block' }}>
+                        {t || '-'}
+                      </Text>
+                    )
+                  }
+                ]}
+              />
+            )}
+          </Spin>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+const EvalPackageDetail: React.FC<{
+  pkg: PackageSummary;
+  progress?: EvaluationProgress;
+  onSelectBidder: (pkgId: number, bidderId: number) => void;
+}> = ({ pkg, progress, onSelectBidder }) => {
+  if (!progress) return <Spin />;
+
+  return (
+    <div>
+      <Space style={{ marginBottom: 12 }}>
+        <span>评审项：{progress.total_items} 个</span>
+        <span>投标人：{progress.total_bidders} 家</span>
+      </Space>
+
+      <Table
+        dataSource={progress.bidder_progress}
+        rowKey="bidder_id"
+        pagination={false}
+        size="small"
+        columns={[
+          {
+            title: '公司名称', dataIndex: 'company_name', key: 'company_name', width: 200
+          },
+          {
+            title: '评审进度', key: 'progress', width: 200,
+            render: (_: any, record: BidderProgress) => (
+              <Space>
+                <Progress
+                  percent={record.progress_pct}
+                  size="small"
+                  style={{ width: 120, margin: 0 }}
+                  status={record.progress_pct >= 100 ? 'success' : 'active'}
+                />
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {record.completed_items}/{record.total_items}
+                </Text>
+              </Space>
+            )
+          },
+          {
+            title: '完成', dataIndex: 'completed_items', key: 'completed', width: 60,
+            render: (v: number) => <Tag color="green">{v}</Tag>
+          },
+          {
+            title: '失败', dataIndex: 'failed_items', key: 'failed', width: 60,
+            render: (v: number) => v > 0 ? <Tag color="red">{v}</Tag> : <Tag>-</Tag>
+          },
+          {
+            title: '操作', key: 'action', width: 100,
+            render: (_: any, record: BidderProgress) => (
+              <Button
+                size="small"
+                type="link"
+                onClick={() => onSelectBidder(pkg.id, record.bidder_id)}
+              >
+                查看得分
+              </Button>
+            )
+          }
+        ]}
+      />
     </div>
   );
 };

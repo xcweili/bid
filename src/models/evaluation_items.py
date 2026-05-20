@@ -18,6 +18,7 @@ class EvaluationItem(Base):
     weight = Column(Float, default=1.0)  # 权重
     material_category = Column(String(200))  # 物资品类（用于筛选）
     is_active = Column(Boolean, default=True)  # 是否启用
+    workflow_id = Column(String(100))  # Dify 工作流 ID，每个评审项对应一个 Dify 工作流
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -35,6 +36,7 @@ class EvaluationItem(Base):
             "weight": self.weight,
             "material_category": self.material_category,
             "is_active": self.is_active,
+            "workflow_id": self.workflow_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

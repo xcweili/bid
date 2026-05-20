@@ -63,6 +63,7 @@ class DifyService:
         self,
         inputs: Dict[str, Any],
         user: str,
+        workflow_id: str = None,
         response_mode: str = "blocking"
     ) -> Optional[Dict[str, Any]]:
         """执行 Dify 工作流
@@ -70,13 +71,15 @@ class DifyService:
         Args:
             inputs: 工作流输入参数，包含文件 ID 等
             user: 用户标识
+            workflow_id: Dify 工作流 ID，不传则使用默认的
             response_mode: 响应模式 (blocking/streaming)
             
         Returns:
             工作流执行结果
         """
-        if not self.api_key or not self.workflow_id:
-            logger.error("DIFY_API_KEY 或 DIFY_WORKFLOW_ID 未配置")
+        wid = workflow_id or self.workflow_id
+        if not self.api_key or not wid:
+            logger.error("DIFY_API_KEY 或 workflow_id 未配置")
             return None
 
         url = f"{self.base_url}/workflows/run"

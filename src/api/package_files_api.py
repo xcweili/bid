@@ -1255,31 +1255,32 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
 
 @router.post("/{package_id}/start-evaluation")
 async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTasks):
-    """通过 Dify 工作流启动评审"""
+    """通过 Dify 工作流启动评审（按评审项分组，每家公司的文件一起发送）"""
     db = db_session()
     try:
-        # 验证包是否存在
         package = db.query(Package).filter(Package.id == package_id).first()
         if not package:
             raise HTTPException(status_code=404, detail="包不存在")
         
-        # 检查配置
-        if not config.DIFY_API_KEY or not config.DIFY_WORKFLOW_ID:
-            raise HTTPException(status_code=400, detail="Dify API 未配置，请先设置 DIFY_API_KEY 和 DIFY_WORKFLOW_ID")
+        if not config.DIFY_API_KEY:
+            raise HTTPException(status_code=400, detail="Dify API 未配置，请先设置 DIFY_API_KEY")
         
-        # 检查是否已配置评审项
         package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
         if not package_items:
             raise HTTPException(status_code=400, detail="请先配置评审项")
         
-        # 获取投标人
+        item_ids = [pi.item_id for pi in package_items]
+        items = db.query(EvaluationItem).filter(EvaluationItem.id.in_(item_ids)).all()
+        items_without_workflow = [i for i in items if not i.workflow_id]
+        if items_without_workflow:
+            names = ', '.join(i.item_name for i in items_without_workflow)
+            raise HTTPException(status_code=400, detail=f"以下评审项未配置 Dify 工作流 ID：{names}")
+        
         bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
         if not bidders:
             raise HTTPException(status_code=400, detail="该包下没有投标人")
         
-        # 获取转换状态
         conversion_status = await get_package_conversion_status(package_id)
-        
         if not conversion_status["conversion_ready"]:
             if conversion_status["total_pdf_count"] == 0:
                 raise HTTPException(status_code=400, detail="请先上传并解析文件")
@@ -1287,13 +1288,13 @@ async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTas
                 raise HTTPException(status_code=400, detail="文件正在转换中，请等待完成")
             raise HTTPException(status_code=400, detail="存在未转换或转换失败的文件")
         
-        # 清除该包之前的 Dify 工作流运行记录
+        # 清除旧记录
         db.query(DifyWorkflowRun).filter(DifyWorkflowRun.package_id == package_id).delete()
+        db.query(EvaluationResult).filter(EvaluationResult.package_id == package_id).delete()
+        package.evaluation_status = "evaluating"
         db.commit()
         
-        # 后台执行 Dify 评审
         background_tasks.add_task(run_dify_evaluation, package_id)
-        
         logger.info(f"包{package_id} Dify 评审已启动")
         return {"message": "评审已启动，正在通过 Dify 工作流进行评审"}
         
@@ -1307,126 +1308,280 @@ async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTas
 
 
 async def run_dify_evaluation(package_id: int):
-    """后台执行 Dify 评审"""
+    """后台执行 Dify 评审
+    按评审项分组，每个评审项对应一个 Dify 工作流，
+    所有公司的文件一起上传，并发执行不同评审项的工作流
+    """
     db = db_session()
     try:
         logger.info(f"[DIFY:{package_id}] 开始 Dify 评审")
         
         package = db.query(Package).filter(Package.id == package_id).first()
         if not package:
-            logger.error(f"[DIFY:{package_id}] 包不存在")
             return
-        
         package_no = package.package_no
         
-        # 获取投标人
         bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
-        
-        # 获取评审项
         package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
         item_ids = [pi.item_id for pi in package_items]
         items = db.query(EvaluationItem).filter(EvaluationItem.id.in_(item_ids)).all() if item_ids else []
-        item_map = {item.id: item for item in items}
         
         src_dir = Path(__file__).parent.parent
         
-        for bidder in bidders:
-            logger.info(f"[DIFY:{package_id}] 评估投标人：{bidder.company_name}")
+        async def evaluate_item(pi, item):
+            """评估单个评审项下的所有公司"""
+            workflow_id = item.workflow_id
+            if not workflow_id:
+                logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 未配置 workflow_id，跳过")
+                return
             
-            # 获取该投标人的所有 MD 文件
-            md_files = db.query(BidderFile).filter(
-                BidderFile.bidder_id == bidder.id,
-                BidderFile.file_type == "md",
-                BidderFile.parse_status == "completed"
-            ).all()
-            
-            if not md_files:
-                logger.warning(f"[DIFY:{package_id}] {bidder.company_name} 没有已转换的 MD 文件")
-                continue
-            
-            for md_file in md_files:
-                # 获取 MD 文件完整路径
-                file_path_str = md_file.file_path
-                if file_path_str.startswith(f"pkg_{package_id}\\"):
-                    file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
-                elif file_path_str.startswith(f"pkg_{package_id}/"):
-                    file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
-                
-                file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
-                
-                if not file_path.exists():
-                    logger.warning(f"[DIFY:{package_id}] 文件不存在: {file_path}")
-                    continue
-                
-                # 创建 Dify 工作流运行记录
-                workflow_run = DifyWorkflowRun(
-                    package_id=package_id,
-                    bidder_id=bidder.id,
-                    file_id=md_file.id,
-                    status="running"
-                )
-                db.add(workflow_run)
-                db.commit()
-                
-                try:
-                    # 调用 Dify 服务进行评估
-                    result = await dify_service.evaluate_bidder_file(
-                        file_path=str(file_path),
-                        bidder_name=bidder.company_name,
-                        file_name=md_file.file_name,
-                        package_no=package_no
-                    )
+            try:
+                # 构建公司+文件列表
+                company_files = []
+                for bidder in bidders:
+                    md_files = db.query(BidderFile).filter(
+                        BidderFile.bidder_id == bidder.id,
+                        BidderFile.file_type == "md",
+                        BidderFile.parse_status == "completed"
+                    ).all()
                     
-                    if result:
-                        data = result.get("data", {})
-                        workflow_run.dify_workflow_run_id = result.get("workflow_run_id")
-                        workflow_run.dify_task_id = result.get("task_id")
-                        workflow_run.status = data.get("status", "completed")
-                        workflow_run.outputs = json.dumps(data.get("outputs", {}), ensure_ascii=False)
-                        workflow_run.error = data.get("error")
-                        workflow_run.elapsed_time = data.get("elapsed_time")
-                        workflow_run.total_tokens = data.get("total_tokens")
-                        workflow_run.total_steps = data.get("total_steps")
-                        workflow_run.finished_at = datetime.now()
+                    if not md_files:
+                        continue
+                    
+                    file_infos = []
+                    for md_file in md_files:
+                        file_path_str = md_file.file_path
+                        if file_path_str.startswith(f"pkg_{package_id}\\"):
+                            file_path_str = file_path_str[len(f"pkg_{package_id}\\"):]
+                        elif file_path_str.startswith(f"pkg_{package_id}/"):
+                            file_path_str = file_path_str[len(f"pkg_{package_id}/"):]
                         
-                        # 解析输出并存储到 EvaluationResult
-                        outputs = data.get("outputs", {})
-                        if outputs:
-                            for pi in package_items:
-                                item = item_map.get(pi.item_id)
-                                if not item:
-                                    continue
-                                item_code = item.item_code if item else ""
-                                result_value = outputs.get(item_code) or outputs.get("result", "")
-                                
-                                evaluation_result = EvaluationResult(
-                                    package_id=package_id,
-                                    bidder_id=bidder.id,
-                                    item_id=pi.item_id,
-                                    score=0,
-                                    score_reason=str(result_value),
-                                    evaluation_status="completed"
-                                )
-                                db.add(evaluation_result)
+                        file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
+                        if not file_path.exists():
+                            continue
                         
-                        logger.info(f"[DIFY:{package_id}] {bidder.company_name}/{md_file.file_name} 评估完成")
-                    else:
-                        workflow_run.status = "failed"
-                        workflow_run.error = "Dify 工作流执行失败"
-                        workflow_run.finished_at = datetime.now()
-                        logger.warning(f"[DIFY:{package_id}] {bidder.company_name}/{md_file.file_name} 评估失败")
+                        # 上传文件到 Dify
+                        file_info = await dify_service.upload_file(str(file_path), f"pkg_{package_no}")
+                        if file_info:
+                            file_infos.append({
+                                "file_name": md_file.file_name,
+                                "upload_file_id": file_info.get("id"),
+                                "bidder_id": bidder.id,
+                                "bidder_name": bidder.company_name
+                            })
+                    
+                    if file_infos:
+                        company_files.append({
+                            "bidder_id": bidder.id,
+                            "bidder_name": bidder.company_name,
+                            "files": file_infos
+                        })
                 
-                except Exception as e:
-                    workflow_run.status = "failed"
-                    workflow_run.error = str(e)
-                    workflow_run.finished_at = datetime.now()
-                    logger.error(f"[DIFY:{package_id}] {bidder.company_name}/{md_file.file_name} 评估异常: {e}")
+                if not company_files:
+                    logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 无有效文件")
+                    return
                 
+                # 调用 Dify 工作流
+                logger.info(f"[DIFY:{package_id}] 执行评审项 {item.item_name} (workflow={workflow_id})，{len(company_files)} 家公司")
+                
+                inputs = {
+                    "evaluation_item": item.item_name,
+                    "item_code": item.item_code,
+                    "company_files": json.dumps(company_files, ensure_ascii=False)
+                }
+                
+                result = await dify_service.run_workflow(inputs, f"pkg_{package_no}", workflow_id)
+                
+                if not result:
+                    logger.error(f"[DIFY:{package_id}] 评审项 {item.item_name} 工作流执行失败")
+                    _mark_item_evaluation_failed(db, package_id, bidders, item)
+                    return
+                
+                data = result.get("data", {})
+                outputs = data.get("outputs", {})
+                run_id = result.get("workflow_run_id")
+                
+                # 解析结果并存储
+                if outputs:
+                    for bidder in bidders:
+                        # 从 outputs 中查找该公司的得分
+                        bidder_output = outputs.get(str(bidder.id)) or outputs.get(bidder.company_name) or outputs.get("result", {})
+                        
+                        if isinstance(bidder_output, dict):
+                            score = bidder_output.get("score")
+                            reason = bidder_output.get("reason", "")
+                            basis = bidder_output.get("basis", "")
+                        elif isinstance(bidder_output, str):
+                            score = 0
+                            reason = bidder_output
+                            basis = ""
+                        else:
+                            continue
+                        
+                        result_record = EvaluationResult(
+                            package_id=package_id,
+                            bidder_id=bidder.id,
+                            item_id=pi.item_id,
+                            score=score if score is not None else 0,
+                            score_reason=str(reason),
+                            evaluation_basis=str(basis),
+                            evaluation_status="completed"
+                        )
+                        db.add(result_record)
+                    
+                    db.commit()
+                    logger.info(f"[DIFY:{package_id}] 评审项 {item.item_name} 完成")
+                else:
+                    logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 无输出")
+                
+                # 记录工作流运行
+                wf_run = DifyWorkflowRun(
+                    package_id=package_id,
+                    bidder_id=bidders[0].id if bidders else 0,
+                    file_id=0,
+                    dify_workflow_run_id=run_id,
+                    status=data.get("status", "completed"),
+                    outputs=json.dumps(outputs, ensure_ascii=False) if outputs else None,
+                    error=data.get("error"),
+                    elapsed_time=data.get("elapsed_time"),
+                    total_tokens=data.get("total_tokens"),
+                    total_steps=data.get("total_steps"),
+                    finished_at=datetime.now()
+                )
+                db.add(wf_run)
                 db.commit()
+                
+            except Exception as e:
+                logger.error(f"[DIFY:{package_id}] 评审项 {item.item_name} 异常: {e}")
+                _mark_item_evaluation_failed(db, package_id, bidders, item)
         
-        logger.info(f"[DIFY:{package_id}] Dify 评审完成")
+        # 并发执行所有评审项
+        import asyncio
+        tasks = [evaluate_item(pi, item) for pi in package_items for item in items if item.id == pi.item_id]
+        await asyncio.gather(*tasks)
+        
+        # 更新包评审状态
+        package = db.query(Package).filter(Package.id == package_id).first()
+        total_items = len(package_items)
+        completed_items = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.evaluation_status == "completed"
+        ).distinct(EvaluationResult.item_id).count()
+        
+        package.evaluation_status = "completed" if completed_items >= total_items else "failed"
+        db.commit()
+        logger.info(f"[DIFY:{package_id}] Dify 评审完成，状态：{package.evaluation_status}")
         
     except Exception as e:
         logger.error(f"[DIFY:{package_id}] Dify 评审异常: {e}")
+        try:
+            pkg = db.query(Package).filter(Package.id == package_id).first()
+            if pkg:
+                pkg.evaluation_status = "failed"
+                db.commit()
+        except:
+            pass
+    finally:
+        db.close()
+
+
+def _mark_item_evaluation_failed(db, package_id, bidders, item):
+    """标记某个评审项下所有公司的评估为失败"""
+    try:
+        for bidder in bidders:
+            result = EvaluationResult(
+                package_id=package_id,
+                bidder_id=bidder.id,
+                item_id=item.id,
+                score=0,
+                score_reason="Dify 工作流执行失败",
+                evaluation_status="failed"
+            )
+            db.add(result)
+        db.commit()
+    except Exception as e:
+        logger.error(f"标记评审失败异常: {e}")
+
+
+@router.get("/{package_id}/evaluation-progress")
+async def get_evaluation_progress(package_id: int):
+    """获取包评审进度"""
+    db = db_session()
+    try:
+        package = db.query(Package).filter(Package.id == package_id).first()
+        if not package:
+            raise HTTPException(status_code=404, detail="包不存在")
+        
+        bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
+        package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
+        
+        total_bidders = len(bidders)
+        total_items = len(package_items)
+        
+        # 每个投标人的评审项完成情况
+        bidder_progress = []
+        for bidder in bidders:
+            completed = db.query(EvaluationResult).filter(
+                EvaluationResult.package_id == package_id,
+                EvaluationResult.bidder_id == bidder.id,
+                EvaluationResult.evaluation_status == "completed"
+            ).count()
+            
+            failed = db.query(EvaluationResult).filter(
+                EvaluationResult.package_id == package_id,
+                EvaluationResult.bidder_id == bidder.id,
+                EvaluationResult.evaluation_status == "failed"
+            ).count()
+            
+            for pi in package_items:
+                has_result = db.query(EvaluationResult).filter(
+                    EvaluationResult.package_id == package_id,
+                    EvaluationResult.bidder_id == bidder.id,
+                    EvaluationResult.item_id == pi.item_id
+                ).first()
+                break
+            
+            bidder_progress.append({
+                "bidder_id": bidder.id,
+                "company_name": bidder.company_name,
+                "completed_items": completed,
+                "failed_items": failed,
+                "total_items": total_items,
+                "progress_pct": round(completed / total_items * 100, 1) if total_items > 0 else 0
+            })
+        
+        return {
+            "package_id": package_id,
+            "package_no": package.package_no,
+            "evaluation_status": package.evaluation_status or "pending",
+            "total_bidders": total_bidders,
+            "total_items": total_items,
+            "bidder_progress": bidder_progress
+        }
+    finally:
+        db.close()
+
+
+@router.get("/{package_id}/evaluation-detail/{bidder_id}")
+async def get_bidder_evaluation_detail(package_id: int, bidder_id: int):
+    """获取某个投标人的评审详情（每个评审项的得分、理由、依据）"""
+    db = db_session()
+    try:
+        results = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.bidder_id == bidder_id
+        ).all()
+        
+        items_list = []
+        for r in results:
+            items_list.append(r.to_dict())
+        
+        bidder = db.query(Bidder).filter(Bidder.id == bidder_id).first()
+        
+        return {
+            "bidder_id": bidder_id,
+            "company_name": bidder.company_name if bidder else "",
+            "items": items_list
+        }
     finally:
         db.close()

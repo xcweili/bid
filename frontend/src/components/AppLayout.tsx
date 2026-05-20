@@ -48,7 +48,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     {
       key: '/evaluation-results',
       icon: <BarChartOutlined />,
-      label: '评审结果',
+      label: '评审详情',
     },
   ];
 
