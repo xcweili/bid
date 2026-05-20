@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-招标评审平台是一个基于AI的智能招标评审系统，旨在提高招标评审的效率和准确性。系统支持上传标书文件、智能识别公司信息、基于规则进行AI评审，并生成详细的评审报告。
+招标评审平台是一个基于AI的智能招标评审系统，旨在提高招标评审的效率和准确性。系统支持项目/标段/包的分层管理、投标人文件上传、基于规则的AI评审，并生成详细的评审报告。
 
 ## 目录结构
 
@@ -22,7 +22,8 @@ bid/
 │   ├── api/           # API路由
 │   ├── data/          # 数据存储
 │   │   ├── tasks/     # 任务数据
-│   │   └── uploads/   # 上传文件
+│   │   ├── uploads/   # 上传文件
+│   │   └── package_files/ # 包文件
 │   ├── logs/          # 日志文件
 │   ├── models/        # 数据库模型
 │   ├── services/      # 服务层
@@ -32,67 +33,6 @@ bid/
 ├── .env               # 环境变量
 └── README.md          # 项目文档
 ```
-
-## 目录说明
-
-### 1. .venv/
-虚拟环境目录，包含项目所需的Python依赖包。
-
-### 2. frontend/
-前端代码目录，使用React + TypeScript开发。
-- **dist/**: 构建输出目录，包含编译后的前端文件
-- **src/components/**: 通用组件
-- **src/pages/**: 页面组件
-- **src/services/**: API服务
-- **src/types/**: TypeScript类型定义
-
-### 3. src/
-后端代码目录，使用FastAPI开发。
-- **api/**: API路由定义，处理HTTP请求
-- **data/**: 数据存储目录
-  - **tasks/**: 任务相关数据，包括解析后的标书文件
-  - **uploads/**: 上传的原始标书文件
-- **logs/**: 日志文件目录，存储应用运行日志
-- **models/**: 数据库模型定义，使用SQLAlchemy ORM
-- **services/**: 业务逻辑服务层
-- **main.py**: 应用入口，配置FastAPI应用
-- **config.py**: 应用配置文件
-
-### 4. scripts/
-辅助脚本目录，包含调度器等工具脚本。
-
-## 主要功能
-
-### 1. 任务管理
-- 创建评审任务
-- 上传标书文件（ZIP格式）
-- 智能识别公司文件夹
-- 管理任务状态
-
-### 2. 规则管理
-- 配置评审规则
-- 规则模板管理
-- 规则绑定文件
-
-### 3. 公司管理
-- 自动识别公司信息
-- 管理公司投标文件
-- 公司状态跟踪
-
-### 4. AI评审
-- 基于规则进行智能评审
-- 自动生成评审报告
-- 计算评分和排名
-
-### 5. 结果查询
-- 查看评审结果
-- 导出评审报告
-- 分析评审数据
-
-### 6. 实时日志
-- 查看任务执行日志
-- 支持手动刷新
-- 滚动显示日志内容
 
 ## 技术栈
 
@@ -104,7 +44,6 @@ bid/
 - **Loguru**: 日志管理
 - **PyPDF2**: PDF文件处理
 - **python-docx**: Word文件处理
-- **zipfile**: ZIP文件处理
 
 ### 前端
 - **React 18+**
@@ -113,11 +52,278 @@ bid/
 - **React Router**: 路由管理
 - **Vite**: 构建工具
 
-## 环境要求
+### AI集成
+- **Dify**: AI工作流引擎，支持文件上传和智能评审
 
-- Python 3.11+
-- Node.js 16+
-- npm 7+
+## 数据库表结构
+
+### 表关系图
+
+```
+projects (项目)
+    │
+    └── sections (标段)
+            │
+            └── packages (包)
+                    │
+                    ├── bidders (投标人)
+                    │       │
+                    │       └── bidder_files (投标人文件)
+                    │
+                    ├── package_items (包-评审项关联)
+                    │       │
+                    │       └── evaluation_items (评审项)
+                    │               │
+                    │               └── files (绑定文件)
+                    │
+                    └── evaluation_results (评审结果)
+```
+
+### 表结构详情
+
+| 表名 | 说明 | 核心字段 |
+|------|------|----------|
+| `projects` | 项目表 | id, project_code, project_name, status |
+| `sections` | 标段表 | id, project_id, section_code, section_name |
+| `packages` | 包表 | id, section_id, package_no, status, evaluation_status |
+| `bidders` | 投标人表 | id, package_id, company_name, social_credit_code, total_score |
+| `bidder_files` | 投标人文件表 | id, bidder_id, file_name, file_path, file_type, parse_status |
+| `evaluation_items` | 评审项表 | id, item_code, item_name, item_content, workflow_id, api_key, base_url |
+| `package_items` | 包-评审项关联表 | id, package_id, item_id, is_required |
+| `files` | 绑定文件表 | id, file_name, file_path, file_type, description |
+| `evaluation_results` | 评审结果表 | id, package_id, bidder_id, item_id, score, score_reason |
+| `evaluation_tasks` | 评审任务表 | id, task_name, status, package_id, total_companies |
+
+### 表关系说明
+
+1. **项目 → 标段 → 包**：一对多关系，形成三层结构
+2. **包 → 投标人**：一个包可以有多个投标人
+3. **投标人 → 文件**：一个投标人可以上传多个文件
+4. **包 → 评审项**：通过package_items关联表实现多对多关系
+5. **评审项 → 文件**：通过evaluation_item_files关联表实现多对多关系
+6. **评审结果**：关联包、投标人、评审项，记录每个评审项的得分
+
+## API接口示例
+
+### 1. 创建项目
+
+```bash
+curl -X POST http://localhost:8000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_code": "PRJ-2026-001",
+    "project_name": "测试项目-绿色低碳生产"
+  }'
+```
+
+### 2. 创建标段
+
+```bash
+curl -X POST http://localhost:8000/api/sections \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": 1,
+    "section_code": "S001",
+    "section_name": "第一标段"
+  }'
+```
+
+### 3. 创建包
+
+```bash
+curl -X POST http://localhost:8000/api/packages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "section_id": 1,
+    "package_no": "P001"
+  }'
+```
+
+### 4. 创建投标人
+
+```bash
+# 创建第一个投标人
+curl -X POST http://localhost:8000/api/bidders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "package_id": 1,
+    "company_name": "河北国绿新能源科技有限公司",
+    "social_credit_code": "91130000MA0F000000"
+  }'
+
+# 创建第二个投标人
+curl -X POST http://localhost:8000/api/bidders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "package_id": 1,
+    "company_name": "北京绿色能源科技股份有限公司",
+    "social_credit_code": "91110000MA0F111111"
+  }'
+```
+
+### 5. 创建评审项
+
+```bash
+curl -X POST http://localhost:8000/api/evaluation-items \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item_code": "ITEM-001",
+    "item_name": "技术方案评审",
+    "item_content": "## 评审标准\n\n### 一、技术可行性\n- 标准一\n- 标准二\n\n### 二、创新性\n- 标准三",
+    "material_category": "设备",
+    "is_active": true,
+    "workflow_id": "workflow_xxx",
+    "api_key": "your_api_key",
+    "base_url": "http://10.255.216.2:8083/v1"
+  }'
+```
+
+### 6. 配置包的评审项
+
+```bash
+curl -X POST http://localhost:8000/api/packages/1/items \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item_ids": [1, 2, 3],
+    "is_required": true
+  }'
+```
+
+### 7. 上传标书文件
+
+```bash
+curl -X POST http://localhost:8000/api/packages/1/upload \
+  -F "file=@标书文件.zip"
+```
+
+### 8. 启动评审
+
+```bash
+curl -X POST http://localhost:8000/api/packages/1/start-evaluation
+```
+
+### 9. 查询评审结果
+
+```bash
+curl http://localhost:8000/api/packages/1/results
+```
+
+## 完整评审流程
+
+### 流程概述
+
+```
+1. 创建项目 → 2. 创建标段 → 3. 创建包 → 4. 配置评审项 → 5. 上传标书 → 6. 启动评审 → 7. 查看结果
+```
+
+### 详细流程说明
+
+#### 阶段一：项目创建
+
+1. **创建项目**：定义项目基本信息（项目编号、项目名称）
+2. **创建标段**：一个项目可以包含多个标段
+3. **创建包**：一个标段可以包含多个包
+
+#### 阶段二：评审项配置
+
+1. **创建评审项**：定义评审标准、关联Dify工作流
+   - 每个评审项可以配置：
+     - `workflow_id`: Dify工作流ID（可选，启用workflow方式调用）
+     - `api_key`: Dify API密钥
+     - `base_url`: Dify API基础地址
+2. **绑定文件**：为评审项配置需要的文件（1对多关系）
+   - 评审时会自动从投标人文件夹下查找同名的.md文件
+3. **配置包的评审项**：将评审项绑定到具体的包
+
+#### 阶段三：文件上传与解析
+
+1. **上传标书**：上传ZIP格式的标书文件
+2. **文件解压**：系统自动解压到 `src/data/package_files/pkg_{package_id}/`
+3. **公司识别**：根据文件夹名称自动识别投标人
+4. **文件解析**：
+   - PDF文件转换为MD格式
+   - 图片OCR识别
+   - 提取文本内容
+
+#### 阶段四：AI评审
+
+1. **启动评审**：调用 `/api/packages/{package_id}/start-evaluation`
+2. **文件匹配**：根据评审项绑定的文件名，查找对应投标人的文件
+3. **Dify调用**：
+   - 方式一（带workflow_id）：调用Dify工作流API
+   - 方式二（不带workflow_id）：直接上传文件并执行评审
+4. **结果解析**：解析Dify返回的JSON结果，提取得分、理由、依据
+5. **存储结果**：将评审结果存入数据库
+
+#### 阶段五：结果查看
+
+1. **查询评审结果**：按包、投标人、评审项维度查询
+2. **生成报告**：汇总所有评审结果，生成完整报告
+3. **导出报告**：支持Excel/Word格式导出
+
+### Dify调用方式
+
+系统支持两种Dify调用方式：
+
+**方式一：带workflow_id（工作流方式）**
+```python
+# 使用工作流ID调用
+response = await dify_client.run_workflow(
+    workflow_id=item.workflow_id,
+    api_key=item.api_key,
+    base_url=item.base_url,
+    inputs={"file": file_content, "question": item.item_content}
+)
+```
+
+**方式二：不带workflow_id（直接调用方式）**
+```python
+# 先上传文件
+file_id = await dify_client.upload_file(file_path)
+
+# 再执行评审
+response = await dify_client.chat_completion(
+    api_key=item.api_key,
+    base_url=item.base_url,
+    message=f"根据以下评审标准评审文件：{item.item_content}",
+    files=[file_id]
+)
+```
+
+### 文件路径逻辑
+
+- **存储方式**：数据库中存储相对于 `src/data/package_files/pkg_{package_id}/` 的相对路径
+- **文件查找**：评审时按公司维度，从投标人文件夹下查找同名的.md文件
+- **路径示例**：
+  - 数据库存储：`投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md`
+  - 完整路径：`src/data/package_files/pkg_1/投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md`
+
+## 当前系统能力
+
+### 已实现功能
+
+| 功能模块 | 描述 | 状态 |
+|----------|------|------|
+| 项目管理 | 项目/标段/包三层结构管理 | ✅ |
+| 投标人管理 | 自动识别公司、管理投标文件 | ✅ |
+| 评审项配置 | 支持API Key、Base URL、Workflow ID配置 | ✅ |
+| 文件绑定 | 评审项绑定多个文件名（1对多） | ✅ |
+| 文件上传 | ZIP文件上传、解压、解析 | ✅ |
+| PDF转换 | PDF转MD、图片OCR识别 | ✅ |
+| Dify集成 | 支持带/不带workflow_id两种调用方式 | ✅ |
+| AI评审 | 自动执行评审、解析结果 | ✅ |
+| 结果存储 | 评审结果数据库存储 | ✅ |
+| 结果查询 | 多维度结果查询 | ✅ |
+| 实时日志 | 任务执行日志展示 | ✅ |
+
+### 待开发功能
+
+| 功能模块 | 描述 | 优先级 |
+|----------|------|--------|
+| 报告导出 | Excel/Word格式报告导出 | 高 |
+| 批量操作 | 批量导入评审项、投标人 | 中 |
+| 权限管理 | 用户角色、权限控制 | 中 |
+| 数据统计 | 评审数据分析、可视化 | 低 |
 
 ## 安装与启动
 
@@ -127,7 +333,7 @@ bid/
 # 进入项目目录
 cd bid
 
-# 激活虚拟环境（如果已存在）
+# 激活虚拟环境
 .venv\Scripts\activate
 
 # 安装依赖
@@ -137,124 +343,93 @@ pip install -r requirements.txt
 ### 2. 前端安装
 
 ```bash
-# 进入前端目录
 cd bid\frontend
-
-# 安装依赖
 npm install
 ```
 
 ### 3. 配置环境变量
 
-复制 `.env.example` 文件为 `.env`，并根据实际情况修改配置：
-
 ```env
 # 数据库配置
 DATABASE_URL=sqlite:///./bid_evaluation.db
 
-# LLM API 配置
-LLM_API_KEY=your_api_key
-LLM_BASE_URL=http://localhost:8080/v1
-LLM_MODEL=qwen3.5-122b
+# Dify配置（可选，使用默认值）
+DIFY_API_KEY=your_api_key
+DIFY_BASE_URL=http://10.255.216.2:8083/v1
 
 # 文件存储
 BASE_DIR=./data
-
-# 任务配置
-MAX_CONCURRENT_TASKS=3
-LLM_TIMEOUT_SECONDS=120
 ```
 
 ### 4. 启动服务
 
-#### 后端服务
+#### 后端服务（端口8000）
 
 ```bash
-# 进入项目目录
 cd bid
-
-# 激活虚拟环境
 .venv\Scripts\activate
-
-# 启动后端服务
 python src\main.py
 ```
 
-后端服务默认运行在 `http://localhost:8001`，API文档地址为 `http://localhost:8001/docs`。
-
-#### 前端服务
+#### 前端服务（端口3000）
 
 ```bash
-# 进入前端目录
 cd bid\frontend
-
-# 启动开发服务器
 npm run dev
 ```
 
-前端服务默认运行在 `http://localhost:3000`。
+### 5. 访问地址
 
-### 5. 构建前端
-
-```bash
-# 进入前端目录
-cd bid\frontend
-
-# 构建生产版本
-npm run build
-```
-
-构建产物将输出到 `frontend/dist` 目录。
+- **前端页面**: http://localhost:3000
+- **API文档**: http://localhost:8000/docs
+- **Swagger UI**: http://localhost:8000/redoc
 
 ## 使用指南
 
-### 1. 创建任务
+### 快速上手
 
-1. 访问前端页面 `http://localhost:3000`
-2. 点击「创建任务」按钮
-3. 输入任务名称，选择评审规则
-4. 点击「创建」按钮
+1. **创建项目结构**
+   - 创建项目 → 创建标段 → 创建包
 
-### 2. 上传标书
+2. **配置评审项**
+   - 在「规则管理」页面创建评审项
+   - 配置Dify API Key和Base URL
+   - 绑定需要的文件名
 
-1. 进入任务详情页面
-2. 点击「上传标书」按钮
-3. 选择ZIP格式的标书文件
-4. 等待文件上传和解析完成
+3. **配置包的评审项**
+   - 进入项目详情 → 配置评审项
+   - 选择需要的评审项
 
-### 3. 启动评审
+4. **上传标书**
+   - 进入包详情 → 上传标书（ZIP格式）
+   - 等待文件解析完成
 
-1. 待文档解析完成后，点击「开始评审」按钮
-2. 系统将自动进行AI评审
-3. 可在「实时日志」中查看评审进度
+5. **启动评审**
+   - 点击「启动评审」按钮
+   - 在实时日志中查看进度
 
-### 4. 查看结果
-
-1. 评审完成后，点击「查看结果」按钮
-2. 查看各公司的评审得分和详细报告
-3. 可导出评审报告
+6. **查看结果**
+   - 评审完成后查看各公司得分
+   - 支持按评审项、公司维度筛选
 
 ## 注意事项
 
-1. **文件格式**：请确保上传的标书文件为ZIP格式，且内部包含公司文件夹
-2. **文件大小**：建议单个ZIP文件不超过100MB
-3. **LLM配置**：请确保正确配置LLM API，否则AI评审功能将无法使用
-4. **日志管理**：系统会自动管理日志文件，定期清理过期日志
-5. **数据安全**：敏感数据请妥善保管，建议定期备份数据库
+1. **文件格式**：标书文件需为ZIP格式，内部按公司名称组织文件夹
+2. **文件路径**：数据库存储相对路径，评审时自动拼接完整路径
+3. **Dify配置**：每个评审项可独立配置API Key和Base URL
+4. **评审逻辑**：按公司维度执行，每个公司独立评审
+5. **文件匹配**：根据评审项绑定的文件名查找对应公司的.md文件
 
 ## 故障排查
 
-1. **后端服务启动失败**：检查Python版本和依赖安装情况
-2. **前端页面无法访问**：检查前端服务是否启动，以及后端API是否正常
-3. **文件上传失败**：检查文件格式和大小，确保网络连接正常
-4. **AI评审失败**：检查LLM API配置和网络连接
-5. **日志不显示**：检查日志目录权限，确保应用有写入权限
-
-## 联系与支持
-
-如有问题或建议，请联系项目维护人员。
+| 问题 | 排查方向 |
+|------|----------|
+| 文件找不到 | 检查文件路径是否正确，确保ZIP解压正常 |
+| 评审失败 | 检查Dify API配置、网络连接、workflow_id是否正确 |
+| 数据库连接失败 | 检查DATABASE_URL配置，确保SQLite文件可写入 |
+| 前端无法访问 | 检查前后端服务是否都已启动，端口是否被占用 |
 
 ---
 
-**版本**: 1.0.0
-**更新日期**: 2026-04-12
+**版本**: 1.0.1
+**更新日期**: 2026-05-20
