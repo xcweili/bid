@@ -17,6 +17,13 @@ interface Bidder {
   company_name: string;
   social_credit_code: string;
   parse_status: string;
+  total_pdf_count: number;
+  converted_count: number;
+  pdf_count: number;
+  md_count: number;
+  failed_count: number;
+  processing_count: number;
+  conversion_ready: boolean;
   package_id: number;
   package_no?: string;
   section_id?: number;
@@ -108,10 +115,80 @@ const FileViewer: React.FC = () => {
   useEffect(() => {
     fetchProjects().then(data => {
       const flattened = flattenBidders(data);
-      setAllBidders(flattened);
-      // 不默认选中任何筛选条件，显示所有数据
+      // 为每个投标人获取转换状态
+      enrichBiddersWithConversionStatus(flattened, data);
     });
   }, []);
+
+  const enrichBiddersWithConversionStatus = async (bidders: Bidder[], projectsData: Project[]) => {
+    // 收集所有唯一的 package_id
+    const packageIds = new Set<number>();
+    projectsData.forEach(project => {
+      project.sections.forEach(section => {
+        section.packages.forEach(pkg => {
+          packageIds.add(pkg.id);
+        });
+      });
+    });
+
+    // 批量获取每个包的转换状态
+    const statusMap: Record<number, any> = {};
+    const requests = Array.from(packageIds).map(async (pkgId) => {
+      try {
+        const res = await fetch(`/api/packages/${pkgId}/conversion-status`);
+        if (res.ok) {
+          const data = await res.json();
+          (data.bidders || []).forEach((b: any) => {
+              const pdfCount = b.pdf_count || 0;
+              const failedCount = b.failed_count || 0;
+              const processingCount = b.processing_count || 0;
+              const completedCount = pdfCount - failedCount - processingCount;
+              
+              let parseStatus = 'pending';
+              if (b.conversion_ready) {
+                parseStatus = 'completed';
+              } else if (processingCount > 0) {
+                parseStatus = 'processing';
+              } else if (failedCount > 0 && pdfCount > 0) {
+                parseStatus = 'failed';
+              }
+              
+              statusMap[b.bidder_id] = {
+                parse_status: parseStatus,
+                total_pdf_count: pdfCount,
+                converted_count: completedCount,
+                pdf_count: pdfCount,
+                md_count: b.md_count || 0,
+                failed_count: failedCount,
+                processing_count: processingCount,
+                conversion_ready: b.conversion_ready
+              };
+            });
+        }
+      } catch (e) {
+        // 忽略单个包获取失败的错误
+      }
+    });
+
+    await Promise.all(requests);
+
+    // 合并状态数据到投标人
+    const enriched = bidders.map(bidder => ({
+      ...bidder,
+      ...(statusMap[bidder.id] || {
+        parse_status: 'pending',
+        total_pdf_count: 0,
+        converted_count: 0,
+        pdf_count: 0,
+        md_count: 0,
+        failed_count: 0,
+        processing_count: 0,
+        conversion_ready: false
+      })
+    }));
+
+    setAllBidders(enriched);
+  };
 
   const handleProjectChange = (value: number | null) => {
     setSelectedProject(value);
@@ -162,7 +239,8 @@ const FileViewer: React.FC = () => {
       if (response.ok) {
         message.success('重新解析任务已下发');
         fetchProjects().then(data => {
-          setAllBidders(flattenBidders(data));
+          const flattened = flattenBidders(data);
+          enrichBiddersWithConversionStatus(flattened, data);
         });
       } else {
         message.error('重新解析失败');
@@ -239,7 +317,10 @@ const FileViewer: React.FC = () => {
         </div>
         <Button
           icon={<RestOutlined />}
-          onClick={() => fetchProjects().then(data => setAllBidders(flattenBidders(data)))}
+          onClick={() => fetchProjects().then(data => {
+            const flattened = flattenBidders(data);
+            enrichBiddersWithConversionStatus(flattened, data);
+          })}
         >
           刷新
         </Button>
