@@ -208,6 +208,112 @@ curl -X POST http://localhost:8000/api/packages/1/start-evaluation
 curl http://localhost:8000/api/packages/1/results
 ```
 
+### 10. 批量导入项目结构（接收评标辅助系统推送）
+
+此接口用于接收评标辅助系统推送的完整项目结构数据，包含项目-标段-包-投标人信息。
+
+```bash
+curl -X POST http://localhost:8000/api/import-project-bid-structure \
+  -H "Content-Type: application/json" \
+  -H "Authorization: bearer your_api_key" \
+  -d '{
+    "projects": [
+      {
+        "project_code": "PRJ-2026-HN-001",
+        "project_name": "湖南省绿色低碳示范项目",
+        "sections": [
+          {
+            "section_code": "S001",
+            "section_name": "第一标段",
+            "packages": [
+              {
+                "package_no": "P001",
+                "bidders": [
+                  {
+                    "company_name": "河北国绿新能源科技有限公司",
+                    "social_credit_code": "91130000MA0F000000",
+                    "rule_list": []
+                  },
+                  {
+                    "company_name": "北京绿色能源科技股份有限公司",
+                    "social_credit_code": "91110000MA0F111111",
+                    "rule_list": []
+                  }
+                ]
+              },
+              {
+                "package_no": "P002",
+                "bidders": [
+                  {
+                    "company_name": "河北国绿新能源科技有限公司",
+                    "social_credit_code": "91130000MA0F000000",
+                    "rule_list": []
+                  },
+                  {
+                    "company_name": "北京绿色能源科技股份有限公司",
+                    "social_credit_code": "91110000MA0F111111",
+                    "rule_list": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "section_code": "S002",
+            "section_name": "第二标段",
+            "packages": [
+              {
+                "package_no": "P003",
+                "bidders": [
+                  {
+                    "company_name": "河北国绿新能源科技有限公司",
+                    "social_credit_code": "91130000MA0F000000",
+                    "rule_list": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+**响应示例：**
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "imported_pairs": 0,
+    "cleared_rows": 0,
+    "created_rows": 6,
+    "created_projects": 1,
+    "created_sections": 2,
+    "created_packages": 3,
+    "created_bidders": 5,
+    "created_rules": 0,
+    "error_count": 0,
+    "errors": []
+  }
+}
+```
+
+**请求结构说明：**
+
+| 层级 | 字段 | 说明 | 必填 |
+|------|------|------|------|
+| projects[] | project_code | 项目编号（全局唯一） | ✅ |
+| projects[] | project_name | 项目名称 | ✅ |
+| sections[] | section_code | 标段编号 | ✅ |
+| sections[] | section_name | 标段名称 | ✅ |
+| packages[] | package_no | 包号 | ✅ |
+| bidders[] | company_name | 公司名称 | ✅ |
+| bidders[] | social_credit_code | 统一社会信用代码 | ✅ |
+| bidders[] | rule_list | 评审规则列表（为空则默认评审项） | ❌ |
+
 ## 完整评审流程
 
 ### 流程概述
