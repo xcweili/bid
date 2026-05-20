@@ -60,7 +60,7 @@ const ProjectDetail: React.FC = () => {
   const searchParams = new URLSearchParams(window.location.search);
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'section');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'evaluation');
   const [selectedSection, setSelectedSection] = useState<Section | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [allItems, setAllItems] = useState<EvaluationItem[]>([]);
@@ -280,121 +280,6 @@ const ProjectDetail: React.FC = () => {
       </Card>
 
       <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 16 }}>
-        <TabPane tab={<Space><FolderOpenOutlined /> 标段管理</Space>} key="section">
-          <Card>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
-              {project.sections && project.sections.length > 0 ? (
-                project.sections.map((section) => (
-                  <div
-                    key={section.id}
-                    onClick={() => handleSectionChange(section)}
-                    style={{
-                      cursor: 'pointer',
-                      padding: '16px 24px',
-                      border: `2px solid ${selectedSection?.id === section.id ? '#1890ff' : '#e8e8e8'}`,
-                      borderRadius: 8,
-                      backgroundColor: selectedSection?.id === section.id ? '#e6f7ff' : '#fff',
-                      transition: 'all 0.3s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <FolderOpenOutlined style={{ color: '#1890ff' }} />
-                      <span style={{ fontWeight: 500 }}>{section.section_name}</span>
-                    </div>
-                    <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
-                      {section.section_code} · {section.package_count} 个包
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <Empty description="暂无标段" />
-              )}
-            </div>
-
-            {/* 包列表 */}
-            {selectedSection && (
-              <div style={{ marginTop: 24 }}>
-                <Title level={5} style={{ marginBottom: 16 }}>
-                  {selectedSection.section_name} · 包列表
-                </Title>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  {selectedSection.packages && selectedSection.packages.length > 0 ? (
-                    selectedSection.packages.map((pkg) => (
-                      <div
-                        key={pkg.id}
-                        onClick={() => handlePackageChange(pkg)}
-                        style={{
-                          cursor: 'pointer',
-                          padding: '12px 20px',
-                          border: `2px solid ${selectedPackage?.id === pkg.id ? '#52c41a' : '#e8e8e8'}`,
-                          borderRadius: 8,
-                          backgroundColor: selectedPackage?.id === pkg.id ? '#f6ffed' : '#fff',
-                          transition: 'all 0.3s'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <InboxOutlined style={{ color: '#52c41a' }} />
-                          <span style={{ fontWeight: 500 }}>{pkg.package_no}</span>
-                        </div>
-                        <div style={{ marginTop: 4, fontSize: 12, color: '#8c8c8c' }}>
-                          {pkg.bidder_count} 家投标人 · {pkg.item_count} 个评审项
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <Empty description="暂无包" />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 投标人列表 */}
-            {selectedPackage && (
-              <div style={{ marginTop: 24 }}>
-                <Title level={5} style={{ marginBottom: 16 }}>
-                  {selectedPackage.package_no} · 投标人列表
-                </Title>
-                <Table
-                  columns={[
-                    {
-                      title: '投标人名称',
-                      dataIndex: 'company_name',
-                      key: 'company_name',
-                      render: (name: string) => <Text strong>{name}</Text>
-                    },
-                    {
-                      title: '统一社会信用代码',
-                      dataIndex: 'social_credit_code',
-                      key: 'social_credit_code',
-                      render: (code: string) => code || '-'
-                    },
-                    {
-                      title: '操作',
-                      key: 'action',
-                      render: (_: any, record: Bidder) => (
-                        <Button 
-                          size="small" 
-                          icon={<EyeOutlined />}
-                          onClick={() => {
-                            setSelectedBidder(record);
-                            setBidderDetailVisible(true);
-                          }}
-                        >
-                          详情
-                        </Button>
-                      )
-                    }
-                  ]}
-                  dataSource={selectedPackage.bidders}
-                  rowKey="id"
-                  pagination={false}
-                  locale={{ emptyText: <Empty description="暂无投标人" /> }}
-                />
-              </div>
-            )}
-          </Card>
-        </TabPane>
-
         <TabPane tab={<Space><BarChartOutlined /> 评审管理</Space>} key="evaluation">
           <Card>
             <div style={{ marginBottom: 16 }}>
@@ -507,6 +392,121 @@ const ProjectDetail: React.FC = () => {
               <Empty description="暂无标段" />
             )}
 
+          </Card>
+        </TabPane>
+
+        <TabPane tab={<Space><FolderOpenOutlined /> 标段信息</Space>} key="section">
+          <Card>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+              {project.sections && project.sections.length > 0 ? (
+                project.sections.map((section) => (
+                  <div
+                    key={section.id}
+                    onClick={() => handleSectionChange(section)}
+                    style={{
+                      cursor: 'pointer',
+                      padding: '16px 24px',
+                      border: `2px solid ${selectedSection?.id === section.id ? '#1890ff' : '#e8e8e8'}`,
+                      borderRadius: 8,
+                      backgroundColor: selectedSection?.id === section.id ? '#e6f7ff' : '#fff',
+                      transition: 'all 0.3s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <FolderOpenOutlined style={{ color: '#1890ff' }} />
+                      <span style={{ fontWeight: 500 }}>{section.section_name}</span>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                      {section.section_code} · {section.package_count} 个包
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty description="暂无标段" />
+              )}
+            </div>
+
+            {/* 包列表 */}
+            {selectedSection && (
+              <div style={{ marginTop: 24 }}>
+                <Title level={5} style={{ marginBottom: 16 }}>
+                  {selectedSection.section_name} · 包列表
+                </Title>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {selectedSection.packages && selectedSection.packages.length > 0 ? (
+                    selectedSection.packages.map((pkg) => (
+                      <div
+                        key={pkg.id}
+                        onClick={() => handlePackageChange(pkg)}
+                        style={{
+                          cursor: 'pointer',
+                          padding: '12px 20px',
+                          border: `2px solid ${selectedPackage?.id === pkg.id ? '#52c41a' : '#e8e8e8'}`,
+                          borderRadius: 8,
+                          backgroundColor: selectedPackage?.id === pkg.id ? '#f6ffed' : '#fff',
+                          transition: 'all 0.3s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <InboxOutlined style={{ color: '#52c41a' }} />
+                          <span style={{ fontWeight: 500 }}>{pkg.package_no}</span>
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: '#8c8c8c' }}>
+                          {pkg.bidder_count} 家投标人 · {pkg.item_count} 个评审项
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <Empty description="暂无包" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 投标人列表 */}
+            {selectedPackage && (
+              <div style={{ marginTop: 24 }}>
+                <Title level={5} style={{ marginBottom: 16 }}>
+                  {selectedPackage.package_no} · 投标人列表
+                </Title>
+                <Table
+                  columns={[
+                    {
+                      title: '投标人名称',
+                      dataIndex: 'company_name',
+                      key: 'company_name',
+                      render: (name: string) => <Text strong>{name}</Text>
+                    },
+                    {
+                      title: '统一社会信用代码',
+                      dataIndex: 'social_credit_code',
+                      key: 'social_credit_code',
+                      render: (code: string) => code || '-'
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      render: (_: any, record: Bidder) => (
+                        <Button 
+                          size="small" 
+                          icon={<EyeOutlined />}
+                          onClick={() => {
+                            setSelectedBidder(record);
+                            setBidderDetailVisible(true);
+                          }}
+                        >
+                          详情
+                        </Button>
+                      )
+                    }
+                  ]}
+                  dataSource={selectedPackage.bidders}
+                  rowKey="id"
+                  pagination={false}
+                  locale={{ emptyText: <Empty description="暂无投标人" /> }}
+                />
+              </div>
+            )}
           </Card>
         </TabPane>
       </Tabs>
