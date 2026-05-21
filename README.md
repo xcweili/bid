@@ -55,6 +55,104 @@ bid/
 ### AI集成
 - **Dify**: AI工作流引擎，支持文件上传和智能评审
 
+## 环境配置与启动
+
+### 1. Python虚拟环境配置
+
+#### 创建虚拟环境
+```bash
+# 使用 venv 创建虚拟环境
+python -m venv .venv
+
+# 激活虚拟环境（Windows PowerShell）
+.\.venv\Scripts\Activate.ps1
+
+# 激活虚拟环境（Windows Command Prompt）
+.\.venv\Scripts\activate.bat
+
+# 激活虚拟环境（Linux/macOS）
+source .venv/bin/activate
+```
+
+#### 安装依赖
+```bash
+# 安装所有依赖包
+pip install -r requirements.txt
+
+# 或使用国内镜像加速（推荐）
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+#### 依赖包说明
+
+| 包名 | 版本 | 用途 |
+|------|------|------|
+| fastapi | 0.109.0 | Web框架 |
+| uvicorn | 0.27.0 | ASGI服务器 |
+| sqlalchemy | 2.0.25 | ORM数据库 |
+| pydantic | 2.5.3 | 数据验证 |
+| openai | 1.12.0 | OpenAI API |
+| loguru | 0.7.2 | 日志管理 |
+| pypdf2 | 3.0.1 | PDF处理 |
+| pymupdf | 1.23.26 | PDF解析 |
+| python-docx | 1.1.0 | Word处理 |
+| httpx | 0.26.0 | HTTP客户端 |
+| pytest | 7.4.4 | 测试框架 |
+
+### 2. 后端服务启动
+
+#### 开发模式（推荐）
+```bash
+# 确保已激活虚拟环境
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### 生产模式
+```bash
+uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+#### 启动参数说明
+| 参数 | 说明 |
+|------|------|
+| `--host 0.0.0.0` | 允许局域网访问 |
+| `--port 8000` | 服务端口 |
+| `--reload` | 代码热重载（开发模式） |
+
+### 3. 前端服务启动
+
+#### 安装依赖（首次运行）
+```bash
+cd frontend
+npm install
+```
+
+#### 开发模式
+```bash
+cd frontend
+npm run dev
+```
+
+#### 生产构建
+```bash
+cd frontend
+npm run build
+```
+
+### 4. 服务访问
+
+| 服务 | 地址 |
+|------|------|
+| 前端页面 | http://localhost:3000 |
+| 后端API | http://localhost:8000 |
+| API文档 | http://localhost:8000/docs |
+| 健康检查 | http://localhost:8000/health |
+
+### 5. 启动顺序建议
+1. 启动后端服务（确保后端就绪）
+2. 启动前端服务
+3. 访问前端页面进行操作
+
 ## 数据库表结构
 
 ### 表关系图
