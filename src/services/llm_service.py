@@ -109,7 +109,8 @@ class LLMService:
             response = client.chat.completions.create(
                 model=OCR_MODEL,
                 messages=messages,
-                temperature=0,
+                temperature=0.7,
+                presence_penalty=1.2,
             )
             return response.choices[0].message.content
         except Exception as e:
