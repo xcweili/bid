@@ -44,6 +44,7 @@ def init_db():
     from models.evaluation_items import EvaluationItem, PackageItem
     from models.bidder_files import BidderFile, PackageFileUpload
     from models.dify_workflow import DifyWorkflowRun
+    from models.user import User
     
     Base.metadata.create_all(bind=engine)
 

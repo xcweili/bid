@@ -539,35 +539,7 @@ const PackageEvaluationDetail: React.FC = () => {
                 render: (category: string) => category || '-'
               },
               {
-                title: '工作流ID',
-                dataIndex: 'workflow_id',
-                key: 'workflow_id',
-                width: 200,
-                render: (workflowId: string) => (
-                  workflowId ? (
-                    <Tag color="purple" style={{ fontSize: 12 }}>
-                      {workflowId}
-                    </Tag>
-                  ) : (
-                    <Text type="secondary">-</Text>
-                  )
-                )
-              },
-              {
-                title: '状态',
-                dataIndex: 'is_required',
-                key: 'is_required',
-                width: 100,
-                render: (is_required: boolean) => (
-                  is_required ? (
-                    <Tag color="green">必填</Tag>
-                  ) : (
-                    <Tag color="default">可选</Tag>
-                  )
-                )
-              },
-              {
-                title: '描述',
+                title: '评审项内容',
                 dataIndex: 'item_description',
                 key: 'item_description',
                 render: (desc: string) => (

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { message } from 'antd';
 
 const API_BASE = '/api';
 
@@ -7,9 +8,14 @@ const api = axios.create({
   timeout: 30000
 });
 
-// 添加请求和响应拦截器
+const TOKEN_KEY = 'bid_evaluation_token';
+
 api.interceptors.request.use(
   (config) => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     if (config.url?.includes('/tasks/') && (config.method === 'post' || config.method === 'put')) {
       console.log('🔄 API 请求:', config.method?.toUpperCase(), config.url);
     }
@@ -23,13 +29,18 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => {
-    // 只保留重要的响应日志
     if (response.config.url?.includes('/tasks/') && (response.config.method === 'post' || response.config.method === 'put')) {
       console.log('✅ API 响应:', response.config.url, response.status);
     }
     return response;
   },
   (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      message.error('登录已过期，请重新登录');
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
     console.error('❌ API 响应错误:', error.config?.url, error.response?.status, error.response?.data);
     return Promise.reject(error);
   }

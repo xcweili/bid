@@ -1,29 +1,26 @@
 import React from 'react';
-import { Layout, Menu, Button, Badge, theme } from 'antd';
+import { Layout, Menu, Button, Badge, theme, Dropdown, Modal } from 'antd';
 import {
-  HomeOutlined,
   FileTextOutlined,
   SettingOutlined,
   DashboardOutlined,
-  UserOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   ProjectOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import './Layout.css';
 
 const { Header, Sider, Content } = Layout;
 
-interface AppLayoutProps {
-  children: React.ReactNode;
-}
-
-const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
+const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = React.useState(false);
   const {
     token: { colorBgContainer, colorBgElevated },
@@ -56,6 +53,40 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     navigate(key);
   };
 
+  const handleLogout = () => {
+    Modal.confirm({
+      title: '退出登录',
+      icon: <ExclamationCircleOutlined />,
+      content: '确定要退出登录吗？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        await logout();
+        navigate('/login', { replace: true });
+      },
+    });
+  };
+
+  const userMenuItems = [
+    {
+      key: 'user-info',
+      label: (
+        <div style={{ padding: '4px 0' }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{user?.display_name || '用户'}</div>
+          <div style={{ color: 'rgba(0,0,0,0.45)', fontSize: 12 }}>{user?.username || ''}</div>
+        </div>
+      ),
+      disabled: true,
+    },
+    { type: 'divider' as const },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: handleLogout,
+    },
+  ];
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider
@@ -79,25 +110,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           onClick={handleMenuClick}
           className="app-menu"
         />
-        
-        <div className="sider-footer">
-          <Button
-            type="text"
-            icon={<UserOutlined />}
-            className="sider-btn"
-            title="用户中心"
-          >
-            {!collapsed && '用户中心'}
-          </Button>
-          <Button
-            type="text"
-            icon={<LogoutOutlined />}
-            className="sider-btn"
-            title="退出登录"
-          >
-            {!collapsed && '退出'}
-          </Button>
-        </div>
       </Sider>
       
       <Layout>
@@ -123,15 +135,30 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           />
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Badge count={3} size="small">
-              <Button type="text" icon={<DashboardOutlined />}>
-                通知
-              </Button>
-            </Badge>
-            <div className="user-info">
-              <UserOutlined />
-              {!collapsed && <span style={{ marginLeft: 8 }}>管理员</span>}
-            </div>
+            <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
+              <div
+                className="user-info"
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #1890ff 0%, #096dd9 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  {user?.display_name?.charAt(0) || 'U'}
+                </div>
+                <span style={{ fontWeight: 500 }}>{user?.display_name || '用户'}</span>
+              </div>
+            </Dropdown>
           </div>
         </Header>
         
@@ -144,7 +171,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             minHeight: 280,
           }}
         >
-          {children}
+          <Outlet />
         </Content>
       </Layout>
     </Layout>

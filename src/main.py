@@ -45,8 +45,11 @@ app = FastAPI(
 async def startup_event():
     """应用启动时初始化数据库"""
     from models.database import init_db
+    from api.auth_api import init_default_admin
     # 创建所有表
     init_db()
+    # 初始化默认管理员账户
+    init_default_admin()
     logger.info("应用启动成功")
 
 # CORS 配置
@@ -59,9 +62,10 @@ app.add_middleware(
 )
 
 # 路由导入
-from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api, evaluation_results_api, bidders_api, package_files_api
+from api import tasks, rules, results, companies, logs, project_import, evaluation_items_api, evaluation_results_api, bidders_api, package_files_api, auth_api
 
 # 注册路由
+app.include_router(auth_api.router, tags=["认证管理"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务管理"])
 app.include_router(rules.router, prefix="/api/rules", tags=["规则管理"])
 app.include_router(results.router, prefix="/api", tags=["结果查询"])

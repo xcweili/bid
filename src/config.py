@@ -35,6 +35,11 @@ class Config:
     DIFY_BASE_URL = os.getenv("DIFY_BASE_URL", "http://10.255.216.2:8083/v1")
     DIFY_WORKFLOW_ID = os.getenv("DIFY_WORKFLOW_ID", "866c5951-f8e6-4ce6-b1df-223952664773")
     
+    # JWT 认证配置
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "bid-evaluation-secret-key-change-in-production")
+    JWT_ALGORITHM = "HS256"
+    JWT_EXPIRE_SECONDS = 1800  # 30分钟无操作超时
+    
     @classmethod
     def init_app(cls):
         """初始化应用目录"""
