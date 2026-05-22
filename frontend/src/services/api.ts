@@ -10,7 +10,6 @@ const api = axios.create({
 // 添加请求和响应拦截器
 api.interceptors.request.use(
   (config) => {
-    // 只保留重要的请求日志
     if (config.url?.includes('/tasks/') && (config.method === 'post' || config.method === 'put')) {
       console.log('🔄 API 请求:', config.method?.toUpperCase(), config.url);
     }

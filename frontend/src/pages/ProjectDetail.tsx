@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card, Typography, Tag, Button, Space, message,
   Descriptions, Tabs, Table, Statistic, Empty, Badge,
-  Modal, Checkbox, InputNumber, Tooltip, Divider, Select, Input
+  Modal, Checkbox, InputNumber, Tooltip, Divider, Select, Input, Progress
 } from 'antd';
 import {
   ArrowLeftOutlined, FolderOpenOutlined, InboxOutlined,
@@ -32,6 +32,15 @@ interface Package {
   bidder_count: number;
   item_count: number;
   bidders: Bidder[];
+  evaluation_status?: string;
+  total_bidders?: number;
+  bidder_progress?: Array<{
+    bidder_id: number;
+    company_name: string;
+    completed_items: number;
+    total_items: number;
+    progress_pct: number;
+  }>;
 }
 
 interface Section {
@@ -93,6 +102,25 @@ const ProjectDetail: React.FC = () => {
     try {
       const response = await fetch(`/api/projects/${id}`);
       const data = await response.json();
+      
+      // 为每个包获取评审进度信息
+      for (const section of data.sections || []) {
+        for (const pkg of section.packages || []) {
+          try {
+            const progressRes = await fetch(`/api/packages/${pkg.id}/evaluation-progress`);
+            const progressData = await progressRes.json();
+            console.log(`包 ${pkg.id} 的评审状态:`, progressData.evaluation_status);
+            pkg.evaluation_status = progressData.evaluation_status || 'pending';
+            pkg.total_bidders = progressData.total_bidders || 0;
+            pkg.bidder_progress = progressData.bidder_progress || [];
+          } catch (error) {
+            console.error(`获取包 ${pkg.id} 的评审进度失败:`, error);
+            pkg.evaluation_status = 'pending';
+            pkg.bidder_progress = [];
+          }
+        }
+      }
+      
       setProject(data);
       // 默认选中第一个标段
       if (data.sections && data.sections.length > 0) {
@@ -133,6 +161,16 @@ const ProjectDetail: React.FC = () => {
       pending: { color: 'default', text: '待处理' },
       processing: { color: 'processing', text: '评审中' },
       completed: { color: 'success', text: '已完成' },
+    };
+    return configs[status] || configs.pending;
+  };
+
+  const getEvaluationStatusConfig = (status: string) => {
+    const configs: Record<string, { color: string; text: string }> = {
+      pending: { color: 'default', text: '待评审' },
+      evaluating: { color: 'processing', text: '评审中' },
+      completed: { color: 'success', text: '已完成' },
+      failed: { color: 'error', text: '失败' },
     };
     return configs[status] || configs.pending;
   };
@@ -184,7 +222,8 @@ const ProjectDetail: React.FC = () => {
           const data = await res.json();
           if (res.ok) {
             message.success(data.message || '评审已启动');
-            fetchProject();
+            // 刷新页面以显示最新的评审状态
+            window.location.reload();
           } else {
             message.error(data.detail || '启动失败');
           }
@@ -309,13 +348,40 @@ const ProjectDetail: React.FC = () => {
                           )
                         },
                         {
-                          title: '状态',
-                          dataIndex: 'status',
-                          key: 'status',
-                          width: 100,
+                          title: '评审状态',
+                          dataIndex: 'evaluation_status',
+                          key: 'evaluation_status',
+                          width: 120,
                           render: (status: string) => {
-                            const config = getStatusConfig(status);
+                            const config = getEvaluationStatusConfig(status || 'pending');
                             return <Tag color={config.color}>{config.text}</Tag>;
+                          }
+                        },
+                        {
+                          title: '公司进度',
+                          key: 'company_progress',
+                          width: 180,
+                          render: (_: any, record: Package) => {
+                            const progress = record.bidder_progress;
+                            const totalBidders = record.total_bidders || 0;
+                            if (!progress || progress.length === 0) {
+                              return <Text type="secondary">-</Text>;
+                            }
+                            const done = progress.filter(b => b.progress_pct >= 100).length;
+                            const percent = totalBidders > 0 ? Math.round((done / totalBidders) * 100) : 0;
+                            return (
+                              <Space>
+                                <Progress
+                                  percent={percent}
+                                  size="small"
+                                  style={{ width: 100 }}
+                                  status={percent === 100 ? 'success' : 'active'}
+                                />
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {done}/{totalBidders} 家
+                                </Text>
+                              </Space>
+                            );
                           }
                         },
                         {

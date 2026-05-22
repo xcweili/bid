@@ -372,7 +372,7 @@ const PackageEvaluationDetail: React.FC = () => {
           >
             {node.title}
           </span>
-          {node.file_size && (
+          {node.file_size && node.file_size > 0 && (
             <Text type="secondary" style={{ fontSize: 12, color: '#999' }}>
               {(node.file_size / 1024).toFixed(1)} KB
             </Text>

@@ -44,9 +44,13 @@ const EvaluationItemManager: React.FC = () => {
     item_name: '',
     item_content: '',
     is_active: true,
-    workflow_id: ''
+    workflow_id: '',
+    base_url: '',
+    api_key: ''
   });
   const [currentItemFiles, setCurrentItemFiles] = useState<FileInfo[]>([]);
+  const [deletedFileIds, setDeletedFileIds] = useState<number[]>([]);
+  const [newFileName, setNewFileName] = useState('');
   const [previewContent, setPreviewContent] = useState('');
 
   useEffect(() => {
@@ -72,30 +76,47 @@ const EvaluationItemManager: React.FC = () => {
       item_name: '',
       item_content: '',
       is_active: true,
-      workflow_id: ''
+      workflow_id: '',
+      base_url: '',
+      api_key: ''
     });
     setCurrentItemFiles([]);
+    setDeletedFileIds([]);
+    setNewFileName('');
     setShowModal(true);
   };
 
   const handleEdit = async (item: EvaluationItem) => {
     setEditingItem(item);
-    setFormData({
-      item_code: item.item_code,
-      item_name: item.item_name,
-      item_content: item.item_content || '',
-      is_active: item.is_active,
-      workflow_id: item.workflow_id || ''
-    });
     
-    // 获取文件列表
     try {
-      const files = await evaluationItemService.getFiles(item.id);
-      setCurrentItemFiles(files);
+      const latestItem = await evaluationItemService.getItem(item.id);
+      setFormData({
+        item_code: latestItem.item_code,
+        item_name: latestItem.item_name,
+        item_content: latestItem.item_content || '',
+        is_active: latestItem.is_active,
+        workflow_id: latestItem.workflow_id || '',
+        base_url: latestItem.base_url || '',
+        api_key: latestItem.api_key || ''
+      });
+      setCurrentItemFiles(latestItem.files || []);
     } catch {
+      // 如果获取失败，使用表格中的数据
+      setFormData({
+        item_code: item.item_code,
+        item_name: item.item_name,
+        item_content: item.item_content || '',
+        is_active: item.is_active,
+        workflow_id: item.workflow_id || '',
+        base_url: item.base_url || '',
+        api_key: item.api_key || ''
+      });
       setCurrentItemFiles([]);
     }
     
+    setDeletedFileIds([]);
+    setNewFileName('');
     setShowModal(true);
   };
 
@@ -126,10 +147,27 @@ const EvaluationItemManager: React.FC = () => {
 
     try {
       if (editingItem) {
-        await evaluationItemService.updateItem(editingItem.id, formData);
+        const newFiles = currentItemFiles.filter(f => f.id < 0);
+        const updateData: any = {
+          ...formData,
+        };
+        if (deletedFileIds.length > 0) {
+          updateData.files_to_remove = deletedFileIds;
+        }
+        if (newFiles.length > 0) {
+          updateData.files_to_add = newFiles.map(f => f.file_name);
+        }
+        await evaluationItemService.updateItem(editingItem.id, updateData);
         message.success('更新成功');
       } else {
-        await evaluationItemService.createItem(formData);
+        const newItem = await evaluationItemService.createItem(formData);
+        const newFiles = currentItemFiles.filter(f => f.id < 0);
+        if (newFiles.length > 0) {
+          await evaluationItemService.updateItem(newItem.id, {
+            files_to_add: newFiles.map(f => f.file_name),
+            files_to_remove: []
+          } as any);
+        }
         message.success('创建成功');
       }
       setShowModal(false);
@@ -139,45 +177,42 @@ const EvaluationItemManager: React.FC = () => {
     }
   };
 
-  const handleAddFile = async () => {
-    if (!editingItem) return;
+  const handleAddFile = () => {
+    if (!newFileName.trim()) return;
     
-    const mockFile: FileCreateRequest = {
-      file_name: `评审文档_${Date.now()}.pdf`,
-      file_path: `/uploads/documents/${Date.now()}.pdf`,
-      file_type: 'application/pdf',
-      file_size: Math.floor(Math.random() * 1024 * 1024) + 1024,
-      description: '评审参考文档'
+    const newFile: FileInfo = {
+      id: -Date.now(),
+      file_name: newFileName.trim(),
+      file_path: '',
+      file_type: 'md',
+      file_size: 0,
+      description: ''
     };
-
-    try {
-      const result = await evaluationItemService.addFile(editingItem.id, mockFile);
-      setCurrentItemFiles(result.files || []);
-      message.success('文件添加成功');
-    } catch (error) {
-      message.error('添加文件失败');
+    
+    setCurrentItemFiles(prev => [...prev, newFile]);
+    setNewFileName('');
+  };
+  
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleAddFile();
     }
   };
 
-  const handleRemoveFile = async (fileId: number) => {
-    if (!editingItem) return;
-
-    Modal.confirm({
-      title: '确认删除',
-      content: '确定要删除该文件吗？',
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          const result = await evaluationItemService.removeFile(editingItem.id, fileId);
-          setCurrentItemFiles(result.files || []);
-          message.success('文件删除成功');
-        } catch (error) {
-          message.error('删除文件失败');
+  const handleRemoveFile = (fileId: number) => {
+    // 如果是临时文件（ID 为负数），直接从列表中移除
+    if (fileId < 0) {
+      setCurrentItemFiles(prev => prev.filter(f => f.id !== fileId));
+    } else {
+      // 如果是已有文件，添加到待删除列表，并从显示列表中移除
+      setDeletedFileIds(prev => {
+        if (!prev.includes(fileId)) {
+          return [...prev, fileId];
         }
-      }
-    });
+        return prev;
+      });
+      setCurrentItemFiles(prev => prev.filter(f => f.id !== fileId));
+    }
   };
 
   const handlePreview = () => {
@@ -213,6 +248,20 @@ const EvaluationItemManager: React.FC = () => {
               </span>
             </Tooltip>
           </Tag>
+        ) : (
+          <Text type="secondary">-</Text>
+        )
+      )
+    },
+    {
+      title: 'API配置',
+      key: 'api_config',
+      width: 180,
+      render: (_: any, record: EvaluationItem) => (
+        record.api_key || record.base_url ? (
+          <Tooltip title={record.base_url ? `地址: ${record.base_url}` : '使用全局配置'}>
+            <Tag color="cyan">已配置</Tag>
+          </Tooltip>
         ) : (
           <Text type="secondary">-</Text>
         )
@@ -338,6 +387,24 @@ const EvaluationItemManager: React.FC = () => {
               />
             </Col>
           </Row>
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col span={12}>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>Dify API 基础地址</label>
+              <Input
+                value={formData.base_url}
+                onChange={(e) => setFormData({ ...formData, base_url: e.target.value })}
+                placeholder="如: http://localhost:8083/v1"
+              />
+            </Col>
+            <Col span={12}>
+              <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>Dify API Key</label>
+              <Input
+                value={formData.api_key}
+                onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                placeholder="Dify API Key"
+              />
+            </Col>
+          </Row>
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -356,45 +423,63 @@ const EvaluationItemManager: React.FC = () => {
           </Row>
 
           {/* 文件列表 */}
-          {editingItem && (
-            <>
-              <Divider style={{ marginTop: 20, marginBottom: 16 }}>关联文件</Divider>
-              <Row gutter={16}>
-                <Col span={24}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <Text strong>已绑定文件</Text>
-                    <Button size="small" type="primary" icon={<PlusOutlined />} onClick={handleAddFile}>
-                      添加文件
-                    </Button>
-                  </div>
-                  
-                  {currentItemFiles.length === 0 ? (
-                    <Empty 
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={<Text type="secondary">暂无绑定文件</Text>}
-                      style={{ margin: 0 }}
-                    />
-                  ) : (
-                    <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e8e8e8', borderRadius: 4 }}>
-                      {currentItemFiles.map(file => (
-                        <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: currentItemFiles[currentItemFiles.length - 1]?.id === file.id ? 'none' : '1px solid #f0f0f0' }}>
-                          <span style={{ marginRight: 10, color: '#1890ff' }}>{getFileIcon(file.file_type)}</span>
-                          <div style={{ flex: 1 }}>
-                            <Text strong>{file.file_name}</Text>
-                            <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
-                              <Text type="secondary" style={{ fontSize: 12 }}>{getFileSize(file.file_size)}</Text>
-                              {file.description && <Text type="secondary" style={{ fontSize: 12 }}>{file.description}</Text>}
-                            </div>
-                          </div>
-                          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveFile(file.id)} />
+          <Divider style={{ marginTop: 20, marginBottom: 16 }}>绑定文件</Divider>
+          <Row gutter={16}>
+            <Col span={24}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <Text strong>已绑定文件</Text>
+              </div>
+              
+              {currentItemFiles.filter(f => !deletedFileIds.includes(f.id)).length === 0 ? (
+                <Empty 
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<Text type="secondary">暂无绑定文件</Text>}
+                  style={{ margin: 0 }}
+                />
+              ) : (
+                <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #e8e8e8', borderRadius: 4 }}>
+                  {currentItemFiles.filter(f => !deletedFileIds.includes(f.id)).map(file => (
+                    <div 
+                      key={file.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '10px 12px', 
+                        borderBottom: currentItemFiles.filter(f => !deletedFileIds.includes(f.id))[currentItemFiles.filter(f => !deletedFileIds.includes(f.id)).length - 1]?.id === file.id ? 'none' : '1px solid #f0f0f0'
+                      }}
+                    >
+                      <span style={{ marginRight: 10, color: '#1890ff' }}>{getFileIcon(file.file_type)}</span>
+                      <div style={{ flex: 1 }}>
+                        <Text strong>{file.file_name}</Text>
+                        <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{getFileSize(file.file_size)}</Text>
+                          {file.description && <Text type="secondary" style={{ fontSize: 12 }}>{file.description}</Text>}
                         </div>
-                      ))}
+                      </div>
+                      <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemoveFile(file.id)} />
                     </div>
-                  )}
-                </Col>
-              </Row>
-            </>
-          )}
+                  ))}
+                </div>
+              )}
+              
+              {/* 添加文件输入框 */}
+              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                <Input
+                  value={newFileName}
+                  onChange={(e) => setNewFileName(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="输入文件名，回车确认添加"
+                  style={{ flex: 1 }}
+                />
+                <Button size="small" type="primary" icon={<PlusOutlined />} onClick={handleAddFile}>
+                  添加
+                </Button>
+              </div>
+              <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
+                评审时将自动从投标人文件夹下查找同名的.md文件
+              </Text>
+            </Col>
+          </Row>
 
           <Row style={{ marginTop: 16 }}>
             <Col span={24}>

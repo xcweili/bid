@@ -250,6 +250,10 @@ async def get_projects():
                 packages = []
                 for pkg in section.packages:
                     pkg_dict = pkg.to_dict()
+                    # 查询实际关联的评审项数量，确保 item_count 正确
+                    from models.evaluation_items import PackageItem
+                    actual_item_count = db.query(PackageItem).filter(PackageItem.package_id == pkg.id).count()
+                    pkg_dict['item_count'] = actual_item_count
                     # 添加投标人信息
                     bidders = [b.to_dict() for b in pkg.bidders]
                     pkg_dict['bidders'] = bidders
@@ -281,6 +285,10 @@ async def get_project(project_id: int):
             packages = []
             for pkg in section.packages:
                 pkg_dict = pkg.to_dict()
+                # 查询实际关联的评审项数量，确保 item_count 正确
+                from models.evaluation_items import PackageItem
+                actual_item_count = db.query(PackageItem).filter(PackageItem.package_id == pkg.id).count()
+                pkg_dict['item_count'] = actual_item_count
                 # 添加投标人信息
                 bidders = [b.to_dict() for b in pkg.bidders]
                 pkg_dict['bidders'] = bidders

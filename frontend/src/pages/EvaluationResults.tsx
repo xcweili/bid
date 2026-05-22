@@ -61,6 +61,9 @@ interface BidderItemDetail {
   score_reason: string;
   evaluation_basis: string;
   evaluation_status: string;
+  source_filename: string;
+  source_page: string;
+  source_quote: string;
 }
 
 interface BidderDetail {
@@ -118,9 +121,8 @@ const EvaluationResults: React.FC = () => {
           const pr = await fetch(`/api/packages/${pid}/evaluation-progress`);
           if (pr.ok) {
             const progress = await pr.json();
-            if (progress.bidder_progress && progress.bidder_progress.length > 0) {
-              newProgressMap[pid] = progress;
-            }
+            // 始终存储进度信息，即使没有评审结果，以便显示正确的评审状态
+            newProgressMap[pid] = progress;
           }
         } catch { /* ignore */ }
       }));
@@ -575,9 +577,21 @@ const EvaluationResults: React.FC = () => {
                       )
                     },
                     {
-                      title: '评审依据', dataIndex: 'evaluation_basis', key: 'basis', width: 280,
+                      title: '来源文件', dataIndex: 'source_filename', key: 'source_filename', width: 180,
                       render: (t: string) => (
-                        <Text ellipsis={{ tooltip: t }} style={{ maxWidth: 270, display: 'inline-block' }}>
+                        <Text ellipsis={{ tooltip: t }} style={{ maxWidth: 170, display: 'inline-block' }}>
+                          {t || '-'}
+                        </Text>
+                      )
+                    },
+                    {
+                      title: '页码', dataIndex: 'source_page', key: 'source_page', width: 80,
+                      render: (t: string) => <Text type="secondary">{t || '-'}</Text>
+                    },
+                    {
+                      title: '原文引用', dataIndex: 'source_quote', key: 'source_quote', width: 300,
+                      render: (t: string) => (
+                        <Text ellipsis={{ tooltip: t }} style={{ maxWidth: 290, display: 'inline-block' }}>
                           {t || '-'}
                         </Text>
                       )
@@ -663,11 +677,15 @@ const EvalPackageDetail: React.FC<{
           },
           {
             title: '总分', dataIndex: 'total_score', key: 'total_score', width: 100,
-            render: (score: number) => (
-              <Tag color="gold" style={{ fontSize: 14, fontWeight: 600, padding: '4px 12px' }}>
-                {score.toFixed(2)}
-              </Tag>
-            )
+            render: (score: number) => {
+              const isValid = score !== undefined && score !== null;
+              return (
+                <Tag color={isValid ? (score >= 60 ? 'gold' : 'red') : 'default'} 
+                     style={{ fontSize: 14, fontWeight: 600, padding: '4px 12px' }}>
+                  {isValid ? Number(score).toFixed(2) : '-'}
+                </Tag>
+              );
+            }
           },
           {
             title: '操作', key: 'action', width: 100,

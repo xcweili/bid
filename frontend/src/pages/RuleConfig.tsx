@@ -6,7 +6,7 @@ import {
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SettingOutlined
 } from '@ant-design/icons';
-import { evaluationItemService, EvaluationItem } from '../services/evaluationItemService';
+import { evaluationItemService, EvaluationItem, FileInfo } from '../services/evaluationItemService';
 import PageHeader from '../components/PageHeader';
 
 const { Title, Text } = Typography;
@@ -23,17 +23,33 @@ const RuleConfig: React.FC = () => {
   const [newFileName, setNewFileName] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('');
   const [categories, setCategories] = useState<string[]>([]);
+  const [currentItemFiles, setCurrentItemFiles] = useState<FileInfo[]>([]);
+  const [deletedFileIds, setDeletedFileIds] = useState<number[]>([]);
+  const [formData, setFormData] = useState<EvaluationItem | null>(null);
 
-  // 获取所有评审项
   useEffect(() => {
     fetchItems();
   }, []);
 
-  // 提取所有物资品类
   useEffect(() => {
     const uniqueCategories = Array.from(new Set(items.map(item => item.material_category).filter(Boolean) as string[]));
     setCategories(uniqueCategories);
   }, [items]);
+
+  useEffect(() => {
+    if (showModal && formData) {
+      form.setFieldsValue({
+        item_code: formData.item_code,
+        item_name: formData.item_name,
+        material_category: formData.material_category || '',
+        is_active: formData.is_active,
+        workflow_id: formData.workflow_id || '',
+        item_content: formData.item_content || '',
+        api_key: formData.api_key || '',
+        base_url: formData.base_url || '',
+      });
+    }
+  }, [showModal, formData]);
 
   const fetchItems = async () => {
     setLoading(true);
@@ -51,59 +67,71 @@ const RuleConfig: React.FC = () => {
   const handleCreate = () => {
     setEditingItem(null);
     form.resetFields();
+    setCurrentItemFiles([]);
+    setDeletedFileIds([]);
+    setNewFileName('');
     setShowModal(true);
   };
 
-  const handleEdit = (item: EvaluationItem) => {
+  const handleEdit = async (item: EvaluationItem) => {
     setEditingItem(item);
-    form.setFieldsValue({
-      item_code: item.item_code,
-      item_name: item.item_name,
-      material_category: item.material_category,
-      is_active: item.is_active,
-      workflow_id: item.workflow_id,
-      item_content: item.item_content,
-      api_key: item.api_key,
-      base_url: item.base_url,
-      files: item.files || []
-    });
-    setShowModal(true);
-  };
-
-  const handleAddFileName = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && newFileName.trim()) {
-      e.preventDefault();
-      if (!editingItem) {
-        message.warning('请先保存评审项');
-        return;
-      }
-      try {
-        const fileData = {
-          file_name: newFileName.trim(),
-          file_path: '',
-          file_type: 'pdf',
-          description: ''
-        };
-        const result = await evaluationItemService.addFile(editingItem.id, fileData);
-        form.setFieldsValue({ files: result.files });
-        setNewFileName('');
-        message.success('文件添加成功');
-      } catch (error) {
-        console.error('添加文件失败:', error);
-        message.error('添加文件失败');
-      }
+    try {
+      const latestItem = await evaluationItemService.getItem(item.id);
+      setCurrentItemFiles(latestItem.files || []);
+      setDeletedFileIds([]);
+      setNewFileName('');
+      setFormData(latestItem);
+      setShowModal(true);
+    } catch {
+      setCurrentItemFiles(item.files || []);
+      setDeletedFileIds([]);
+      setNewFileName('');
+      setFormData(item);
+      setShowModal(true);
     }
   };
 
-  const handleRemoveFile = async (fileId: number) => {
-    if (!editingItem) return;
-    try {
-      const result = await evaluationItemService.removeFile(editingItem.id, fileId);
-      form.setFieldsValue({ files: result.files });
-      message.success('文件移除成功');
-    } catch (error) {
-      console.error('移除文件失败:', error);
-      message.error('移除文件失败');
+  const handleAddFileName = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && newFileName.trim()) {
+      e.preventDefault();
+      const newFile: FileInfo = {
+        id: -Date.now(),
+        file_name: newFileName.trim(),
+        file_path: '',
+        file_type: 'md',
+        file_size: 0,
+        description: ''
+      };
+      setCurrentItemFiles(prev => [...prev, newFile]);
+      setNewFileName('');
+    }
+  };
+
+  const handleAddFileClick = () => {
+    if (!newFileName.trim()) return;
+    const newFile: FileInfo = {
+      id: -Date.now(),
+      file_name: newFileName.trim(),
+      file_path: '',
+      file_type: 'md',
+      file_size: 0,
+      description: ''
+    };
+    setCurrentItemFiles(prev => [...prev, newFile]);
+    setNewFileName('');
+  };
+
+  const handleRemoveFile = (fileId: number) => {
+    if (fileId < 0) {
+      setCurrentItemFiles(prev => prev.filter(f => f.id !== fileId));
+    } else {
+      setDeletedFileIds(prev => {
+        if (!prev.includes(fileId)) {
+          return [...prev, fileId];
+        }
+        return prev;
+      });
+      setCurrentItemFiles(prev => prev.filter(f => f.id !== fileId));
     }
   };
 
@@ -132,15 +160,34 @@ const RuleConfig: React.FC = () => {
       const values = await form.validateFields();
 
       if (editingItem) {
-        await evaluationItemService.updateItem(editingItem.id, values);
+        const newFiles = currentItemFiles.filter(f => f.id < 0);
+        const updateData: any = {
+          ...values,
+        };
+        if (deletedFileIds.length > 0) {
+          updateData.files_to_remove = deletedFileIds;
+        }
+        if (newFiles.length > 0) {
+          updateData.files_to_add = newFiles.map(f => f.file_name);
+        }
+        await evaluationItemService.updateItem(editingItem.id, updateData);
         message.success('更新成功');
       } else {
-        await evaluationItemService.createItem(values);
+        const newItem = await evaluationItemService.createItem(values);
+        const newFiles = currentItemFiles.filter(f => f.id < 0);
+        if (newFiles.length > 0) {
+          await evaluationItemService.updateItem(newItem.id, {
+            files_to_add: newFiles.map(f => f.file_name),
+            files_to_remove: []
+          } as any);
+        }
         message.success('创建成功');
       }
 
       setShowModal(false);
       form.resetFields();
+      setCurrentItemFiles([]);
+      setDeletedFileIds([]);
       fetchItems();
     } catch (error) {
       console.error('保存失败:', error);
@@ -148,7 +195,6 @@ const RuleConfig: React.FC = () => {
     }
   };
 
-  // 过滤数据
   const filteredItems = items.filter(item => {
     const matchSearch = !searchText ||
       item.item_name.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -247,7 +293,6 @@ const RuleConfig: React.FC = () => {
       />
 
       <Card>
-        {/* 搜索和筛选 */}
         <div style={{ marginBottom: 16, display: 'flex', gap: 16 }}>
           <Input.Search
             placeholder="搜索评审项编号、名称或描述"
@@ -285,7 +330,6 @@ const RuleConfig: React.FC = () => {
         />
       </Card>
 
-      {/* 新增/编辑模态框 */}
       <Modal
         title={editingItem ? '编辑评审项' : '新增评审项'}
         open={showModal}
@@ -293,6 +337,8 @@ const RuleConfig: React.FC = () => {
         onCancel={() => {
           setShowModal(false);
           form.resetFields();
+          setCurrentItemFiles([]);
+          setDeletedFileIds([]);
         }}
         width={700}
         okText="保存"
@@ -337,10 +383,10 @@ const RuleConfig: React.FC = () => {
               placeholder="例如：http://10.255.216.2:8083/v1" 
               style={{ width: '100%' }}
             />
-            <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block' }}>
-              留空则使用默认地址：http://10.255.216.2:8083/v1
-            </Text>
           </Form.Item>
+          <Text type="secondary" style={{ fontSize: 12, marginTop: 8, display: 'block', marginBottom: 16 }}>
+            留空则使用默认地址：http://10.255.216.2:8083/v1
+          </Text>
 
           <Form.Item
             name="workflow_id"
@@ -351,9 +397,9 @@ const RuleConfig: React.FC = () => {
 
           <Form.Item label="绑定文件">
             <div style={{ maxHeight: 150, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 4, padding: 8, marginBottom: 8 }}>
-              {form.getFieldValue('files')?.length > 0 ? (
+              {currentItemFiles.length > 0 ? (
                 <List
-                  dataSource={form.getFieldValue('files')}
+                  dataSource={currentItemFiles}
                   renderItem={(file: any) => (
                     <List.Item
                       key={file.id || file.file_name}
@@ -388,12 +434,7 @@ const RuleConfig: React.FC = () => {
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
-                onClick={() => {
-                  if (newFileName.trim()) {
-                    const event = { key: 'Enter', preventDefault: () => {} } as unknown as React.KeyboardEvent;
-                    handleAddFileName(event);
-                  }
-                }}
+                onClick={handleAddFileClick}
               >
                 添加
               </Button>

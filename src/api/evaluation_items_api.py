@@ -30,6 +30,8 @@ class EvaluationItemUpdate(BaseModel):
     workflow_id: Optional[str] = Field(None, description="工作流ID")
     api_key: Optional[str] = Field(None, description="Dify API Key")
     base_url: Optional[str] = Field(None, description="Dify API 基础地址")
+    files_to_add: Optional[List[str]] = Field(None, description="要添加的文件名列表")
+    files_to_remove: Optional[List[int]] = Field(None, description="要删除的文件ID列表")
 
 
 class PackageItemsSet(BaseModel):
@@ -95,7 +97,7 @@ def create_evaluation_item(item: EvaluationItemCreate, db: Session = Depends(get
 @router.put("/evaluation-items/{item_id}", response_model=dict)
 def update_evaluation_item(item_id: int, item: EvaluationItemUpdate, db: Session = Depends(get_db)):
     """更新评审项"""
-    db_item = db.query(EvaluationItem).filter_by(id=item_id).first()
+    db_item = db.query(EvaluationItem).options(joinedload(EvaluationItem.files)).filter_by(id=item_id).first()
     if not db_item:
         raise HTTPException(status_code=404, detail="评审项不存在")
     
@@ -120,10 +122,28 @@ def update_evaluation_item(item_id: int, item: EvaluationItemUpdate, db: Session
     if item.base_url is not None:
         db_item.base_url = item.base_url
     
+    if item.files_to_remove is not None:
+        for file_id in item.files_to_remove:
+            file_to_remove = next((f for f in db_item.files if f.id == file_id), None)
+            if file_to_remove:
+                db_item.files.remove(file_to_remove)
+                db.delete(file_to_remove)
+    
+    if item.files_to_add is not None:
+        for file_name in item.files_to_add:
+            new_file = File(
+                file_name=file_name,
+                file_path='',
+                file_type='md',
+                file_size=0,
+                description=''
+            )
+            db_item.files.append(new_file)
+    
     db.commit()
     db.refresh(db_item)
     
-    return db_item.to_dict()
+    return db_item.to_dict_with_files()
 
 
 @router.delete("/evaluation-items/{item_id}")

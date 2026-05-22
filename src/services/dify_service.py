@@ -51,7 +51,7 @@ class DifyService:
         headers = self._get_headers(api_key)
         
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 with open(file_path, "rb") as f:
                     files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
                     data = {"user": user}
@@ -105,14 +105,14 @@ class DifyService:
         headers = {**self._get_headers(api_key), "Content-Type": "application/json"}
         
         # 根据是否配置 workflow_id 选择调用方式
-        wid = workflow_id or self.default_workflow_id
-        if wid:
+        if workflow_id:
             # 方式1: 配置了 workflow_id，使用 /v1/workflows/{workflow_id}/run
-            url = f"{url_base}/workflows/{wid}/run"
+            url = f"{url_base}/workflows/{workflow_id}/run"
             payload = {
                 "inputs": inputs,
                 "user": user,
-                "response_mode": response_mode
+                "response_mode": response_mode,
+                "files": []
             }
             logger.info(f"使用带 workflow_id 的调用方式: {url}")
         else:
@@ -121,7 +121,8 @@ class DifyService:
             payload = {
                 "inputs": inputs,
                 "user": user,
-                "response_mode": response_mode
+                "response_mode": response_mode,
+                "files": []
             }
             logger.info(f"使用不带 workflow_id 的调用方式: {url}")
 
@@ -135,7 +136,11 @@ class DifyService:
                 
                 if response.status_code == 200:
                     result = response.json()
-                    logger.info(f"Dify 工作流执行成功: run_id={result.get('workflow_run_id')}")
+                    run_id = result.get('workflow_run_id')
+                    status = result.get('status')
+                    logger.info(f"Dify 工作流执行成功: run_id={run_id}")
+                    logger.info(f"Dify 工作流返回详情: status={status}, run_id={run_id}")
+                    logger.debug(f"Dify 工作流完整返回: {json.dumps(result, ensure_ascii=False, indent=2)}")
                     return result
                 else:
                     logger.error(f"Dify 工作流执行失败: status={response.status_code}, body={response.text}")

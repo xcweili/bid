@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from loguru import logger
 
 from models.evaluation_results import EvaluationResult
 from models.project_structure import Package, Bidder, Section
@@ -18,12 +19,18 @@ class EvaluationResultCreate(BaseModel):
     score: Optional[float] = Field(None, description="得分")
     score_reason: Optional[str] = Field(None, description="评分理由")
     evaluation_basis: Optional[str] = Field(None, description="评审依据")
+    source_filename: Optional[str] = Field(None, description="引用来源文件名")
+    source_page: Optional[str] = Field(None, description="引用来源页码")
+    source_quote: Optional[str] = Field(None, description="原文引用")
 
 class EvaluationResultUpdate(BaseModel):
     score: Optional[float] = Field(None, description="得分")
     score_reason: Optional[str] = Field(None, description="评分理由")
     evaluation_status: Optional[str] = Field(None, description="评审状态")
     evaluation_basis: Optional[str] = Field(None, description="评审依据")
+    source_filename: Optional[str] = Field(None, description="引用来源文件名")
+    source_page: Optional[str] = Field(None, description="引用来源页码")
+    source_quote: Optional[str] = Field(None, description="原文引用")
 
 @router.get("/evaluation-results", response_model=List[dict])
 async def get_evaluation_results(
@@ -107,6 +114,9 @@ async def create_evaluation_result(
         score=result.score,
         score_reason=result.score_reason,
         evaluation_basis=result.evaluation_basis,
+        source_filename=result.source_filename,
+        source_page=result.source_page,
+        source_quote=result.source_quote,
         evaluation_status='completed' if result.score else 'pending'
     )
     
@@ -138,6 +148,12 @@ async def update_evaluation_result(
         db_result.evaluation_status = result.evaluation_status
     if result.evaluation_basis is not None:
         db_result.evaluation_basis = result.evaluation_basis
+    if result.source_filename is not None:
+        db_result.source_filename = result.source_filename
+    if result.source_page is not None:
+        db_result.source_page = result.source_page
+    if result.source_quote is not None:
+        db_result.source_quote = result.source_quote
     
     db.commit()
     db.refresh(db_result)
@@ -175,3 +191,96 @@ async def get_package_results(package_id: int, db: Session = Depends(get_db)):
     
     results = db.query(EvaluationResult).filter_by(package_id=package_id).all()
     return [result.to_dict() for result in results]
+
+@router.get("/packages/{package_id}/evaluation-progress", response_model=dict)
+async def get_package_evaluation_progress(package_id: int, db: Session = Depends(get_db)):
+    """获取包的评审进度信息"""
+    # 检查包是否存在
+    package = db.query(Package).filter_by(id=package_id).first()
+    if not package:
+        raise HTTPException(status_code=404, detail="包不存在")
+    
+    # 获取该包的所有投标人
+    bidders = db.query(Bidder).filter_by(package_id=package_id).all()
+    
+    # 获取该包配置的评审项数量
+    from models.evaluation_items import PackageItem
+    total_items = db.query(PackageItem).filter_by(package_id=package_id).count()
+    
+    bidder_progress = []
+    completed_count = 0
+    evaluating_count = 0
+    failed_count = 0
+    
+    for bidder in bidders:
+        # 获取该投标人的评审结果
+        results = db.query(EvaluationResult)\
+            .filter(EvaluationResult.package_id == package_id)\
+            .filter(EvaluationResult.bidder_id == bidder.id)\
+            .all()
+        
+        # 统计已完成和失败的评审项数量
+        completed_items = sum(1 for r in results if r.evaluation_status == 'completed')
+        failed_items = sum(1 for r in results if r.evaluation_status == 'failed')
+        
+        # 计算总得分（已完成项的总分）
+        total_score = sum(r.score for r in results if r.evaluation_status == 'completed' and r.score is not None)
+        
+        # 计算进度百分比（失败也计入完成）
+        progress_pct = 0
+        if total_items > 0:
+            progress_pct = round(((completed_items + failed_items) / total_items) * 100)
+        
+        bidder_progress.append({
+            "bidder_id": bidder.id,
+            "company_name": bidder.company_name,
+            "completed_items": completed_items,
+            "failed_items": failed_items,
+            "total_items": total_items,
+            "total_score": total_score,
+            "progress_pct": progress_pct
+        })
+        
+        # 更新状态计数
+        if completed_items == total_items and failed_items == 0:
+            # 全部完成且没有失败
+            completed_count += 1
+        elif failed_items > 0:
+            # 有失败项
+            failed_count += 1
+        elif completed_items > 0 or len(results) > 0:
+            # 有部分完成或有评审记录
+            evaluating_count += 1
+    
+    # 确定整体评审状态
+    # 优先使用后台设置的状态，只有在特定情况下才重新判断
+    if package.evaluation_status == "evaluating":
+        # 如果包状态是 evaluating，检查是否有评审结果
+        if completed_count == len(bidders) and len(bidders) > 0:
+            # 所有公司都完成了，更新为 completed
+            evaluation_status = "completed"
+            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 completed (所有公司完成)")
+        elif failed_count > 0:
+            # 有失败的公司，更新为 failed
+            evaluation_status = "failed"
+            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 failed ({failed_count} 家公司失败)")
+        elif evaluating_count > 0 or completed_count > 0:
+            # 有进行中的评审或部分完成，保持 evaluating
+            evaluation_status = "evaluating"
+            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (进行中)")
+        else:
+            # 还没有任何评审结果，刚启动
+            evaluation_status = "evaluating"
+            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (刚启动)")
+    else:
+        # 其他状态直接使用后台设置的值
+        evaluation_status = package.evaluation_status
+        logger.info(f"[EVAL_PROGRESS]   -> 使用后台状态: {evaluation_status}")
+    
+    return {
+        "package_id": package_id,
+        "evaluation_status": evaluation_status,
+        "total_bidders": len(bidders),
+        "total_items": total_items,
+        "bidder_progress": bidder_progress
+    }
