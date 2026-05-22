@@ -12,20 +12,21 @@ bid/
 ├── frontend/          # 前端代码
 │   ├── dist/          # 构建输出
 │   ├── src/           # 源代码
-│   │   ├── components/ # 组件
-│   │   ├── pages/     # 页面
+│   │   ├── components/ # 组件（含 AppLayout）
+│   │   ├── contexts/  # 全局状态（含 AuthContext）
+│   │   ├── pages/     # 页面（含 Login）
 │   │   ├── services/  # 服务
 │   │   └── types/     # 类型定义
 │   ├── package.json   # 前端依赖
 │   └── vite.config.ts # Vite配置
 ├── src/               # 后端代码
-│   ├── api/           # API路由
+│   ├── api/           # API路由（含 auth_api.py）
 │   ├── data/          # 数据存储
 │   │   ├── tasks/     # 任务数据
 │   │   ├── uploads/   # 上传文件
 │   │   └── package_files/ # 包文件
 │   ├── logs/          # 日志文件
-│   ├── models/        # 数据库模型
+│   ├── models/        # 数据库模型（含 user.py）
 │   ├── services/      # 服务层
 │   ├── main.py        # 应用入口
 │   └── config.py      # 配置文件
@@ -44,12 +45,13 @@ bid/
 - **Loguru**: 日志管理
 - **PyPDF2**: PDF文件处理
 - **python-docx**: Word文件处理
+- **JWT**: 用户认证与会话管理
 
 ### 前端
 - **React 18+**
 - **TypeScript**
 - **Ant Design**: UI组件库
-- **React Router**: 路由管理
+- **React Router**: 路由管理（含路由守卫）
 - **Vite**: 构建工具
 
 ### AI集成
@@ -148,10 +150,21 @@ npm run build
 | API文档 | http://localhost:8000/docs |
 | 健康检查 | http://localhost:8000/health |
 
-### 5. 启动顺序建议
+### 5. 登录账户
+
+系统内置了默认账户，首次启动时自动创建：
+
+| 账号 | 密码 | 角色 |
+|------|------|------|
+| `aibid_csust` | `Ai@2026#8` | 管理员 |
+
+登录页面访问 `http://localhost:3000/login`，登录成功后自动跳转至项目管理页面。
+
+### 6. 启动顺序建议
 1. 启动后端服务（确保后端就绪）
 2. 启动前端服务
-3. 访问前端页面进行操作
+3. 访问 `http://localhost:3000/login`，使用默认账户登录
+4. 登录成功后进行操作
 
 ## 数据库表结构
 
@@ -191,6 +204,7 @@ projects (项目)
 | `files` | 绑定文件表 | id, file_name, file_path, file_type, description |
 | `evaluation_results` | 评审结果表 | id, package_id, bidder_id, item_id, score, score_reason |
 | `evaluation_tasks` | 评审任务表 | id, task_name, status, package_id, total_companies |
+| `users` | 用户表 | id, username, password_hash, display_name, role, is_active |
 
 ### 表关系说明
 
@@ -203,7 +217,46 @@ projects (项目)
 
 ## API接口示例
 
-### 1. 创建项目
+### 1. 用户登录
+
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "aibid_csust",
+    "password": "Ai@2026#8"
+  }'
+```
+
+**响应示例：**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": 1,
+    "username": "aibid_csust",
+    "display_name": "管理员",
+    "role": "admin"
+  },
+  "expires_in": 1800
+}
+```
+
+### 2. 验证Token
+
+```bash
+curl http://localhost:8000/api/auth/verify \
+  -H "Authorization: Bearer <token>"
+```
+
+### 3. 退出登录
+
+```bash
+curl -X POST http://localhost:8000/api/auth/logout \
+  -H "Authorization: Bearer <token>"
+```
+
+### 4. 创建项目
 
 ```bash
 curl -X POST http://localhost:8000/api/projects \
@@ -214,7 +267,7 @@ curl -X POST http://localhost:8000/api/projects \
   }'
 ```
 
-### 2. 创建标段
+### 5. 创建标段
 
 ```bash
 curl -X POST http://localhost:8000/api/sections \
@@ -226,7 +279,7 @@ curl -X POST http://localhost:8000/api/sections \
   }'
 ```
 
-### 3. 创建包
+### 6. 创建包
 
 ```bash
 curl -X POST http://localhost:8000/api/packages \
@@ -237,7 +290,7 @@ curl -X POST http://localhost:8000/api/packages \
   }'
 ```
 
-### 4. 创建投标人
+### 7. 创建投标人
 
 ```bash
 # 创建第一个投标人
@@ -259,7 +312,7 @@ curl -X POST http://localhost:8000/api/bidders \
   }'
 ```
 
-### 5. 创建评审项
+### 8. 创建评审项
 
 ```bash
 curl -X POST http://localhost:8000/api/evaluation-items \
@@ -276,7 +329,7 @@ curl -X POST http://localhost:8000/api/evaluation-items \
   }'
 ```
 
-### 6. 配置包的评审项
+### 9. 配置包的评审项
 
 ```bash
 curl -X POST http://localhost:8000/api/packages/1/items \
@@ -287,26 +340,26 @@ curl -X POST http://localhost:8000/api/packages/1/items \
   }'
 ```
 
-### 7. 上传标书文件
+### 10. 上传标书文件
 
 ```bash
 curl -X POST http://localhost:8000/api/packages/1/upload \
   -F "file=@标书文件.zip"
 ```
 
-### 8. 启动评审
+### 11. 启动评审
 
 ```bash
 curl -X POST http://localhost:8000/api/packages/1/start-evaluation
 ```
 
-### 9. 查询评审结果
+### 12. 查询评审结果
 
 ```bash
 curl http://localhost:8000/api/packages/1/results
 ```
 
-### 10. 批量导入项目结构（接收评标辅助系统推送）
+### 13. 批量导入项目结构（接收评标辅助系统推送）
 
 此接口用于接收评标辅助系统推送的完整项目结构数据，包含项目-标段-包-投标人信息。
 
@@ -498,6 +551,42 @@ response = await dify_client.chat_completion(
 
 - **存储方式**：数据库中存储相对于 `src/data/package_files/pkg_{package_id}/` 的相对路径
 - **文件查找**：评审时按公司维度，从投标人文件夹下查找同名的.md文件
+
+## 认证系统
+
+系统基于 JWT（JSON Web Token）实现用户认证与会话管理。
+
+### 认证机制
+
+| 特性 | 说明 |
+|------|------|
+| **认证方式** | JWT Token（Bearer Authentication） |
+| **Token有效期** | 30分钟（无操作自动过期） |
+| **密码加密** | SHA-256 加盐哈希 |
+| **默认账户** | `aibid_csust` / `Ai@2026#8` |
+
+### 安全特性
+
+1. **会话超时**：30分钟内无任何操作（鼠标、键盘、滚动等）自动退出登录
+2. **路由保护**：未登录用户自动跳转至登录页
+3. **API拦截**：所有请求自动携带Token，后端返回401时前端自动跳转登录页
+4. **退出确认**：退出时弹出确认弹窗，防止误操作
+5. **密码安全**：使用加盐SHA-256哈希存储，不保存明文密码
+
+### 认证相关API
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/auth/login` | POST | 用户登录，返回JWT Token |
+| `/api/auth/logout` | POST | 退出登录 |
+| `/api/auth/verify` | GET | 验证Token有效性，返回用户信息 |
+
+### 前端实现
+
+- **AuthContext**：全局状态管理，维护用户信息和登录状态
+- **ProtectedRoute**：路由守卫组件，未登录时重定向到 `/login`
+- **axios拦截器**：自动在请求头添加 `Authorization: Bearer <token>`
+- **活动检测**：监听 `mousedown`、`mousemove`、`keydown`、`scroll` 等事件，刷新超时计时器
 - **路径示例**：
   - 数据库存储：`投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md`
   - 完整路径：`src/data/package_files/pkg_1/投标文件/河北国绿新能源科技有限公司/产品碳足迹证书佐证材料/产品碳足迹证书佐证材料.md`
