@@ -152,11 +152,12 @@ async def verify(current_user: dict = Depends(get_current_user)):
 
 
 def init_default_admin():
-    """初始化默认管理员账户"""
+    """初始化默认管理员账户（仅首次启动且无用户时创建）"""
     db = db_session()
     try:
-        existing = db.query(User).filter(User.username == "admin").first()
-        if existing:
+        user_count = db.query(User).count()
+        if user_count > 0:
+            logger.info(f"已有 {user_count} 个用户，跳过默认管理员创建")
             return
         admin = User(
             username="admin",
