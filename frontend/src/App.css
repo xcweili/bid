@@ -57,3 +57,19 @@ code {
 .status-processing { color: #1890ff; }
 .status-completed { color: #52c41a; }
 .status-failed { color: #ff4d4f; }
+
+.markdown-content-ellipsis {
+  position: relative;
+  overflow: hidden;
+}
+
+.markdown-content-ellipsis::after {
+  content: '...';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding: 0 20px 0 40px;
+  background: linear-gradient(to right, transparent, #fff 40%);
+  color: #666;
+  font-weight: 500;
+}

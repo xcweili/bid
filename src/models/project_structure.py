@@ -12,7 +12,6 @@ class Project(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_code = Column(String(100), nullable=False, unique=True)  # 项目编号，全局唯一
     project_name = Column(String(255), nullable=False)  # 项目名称
-    status = Column(String(50), default='pending')  # pending, processing, completed
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
@@ -24,7 +23,6 @@ class Project(Base):
             "id": self.id,
             "project_code": self.project_code,
             "project_name": self.project_name,
-            "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "section_count": len(self.sections) if self.sections else 0
@@ -61,7 +59,6 @@ class Package(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     section_id = Column(Integer, ForeignKey('sections.id'), nullable=False)
     package_no = Column(String(100), nullable=False)  # 包号
-    status = Column(String(50), default='pending')  # pending, processing, completed
     zip_file_path = Column(String(500))  # 标书文件路径
     evaluation_status = Column(String(50), default='pending')  # pending, evaluating, completed, failed
     
@@ -75,7 +72,6 @@ class Package(Base):
             "id": self.id,
             "section_id": self.section_id,
             "package_no": self.package_no,
-            "status": self.status,
             "evaluation_status": self.evaluation_status,
             "zip_file_path": self.zip_file_path,
             "bidder_count": len(self.bidders) if self.bidders else 0,

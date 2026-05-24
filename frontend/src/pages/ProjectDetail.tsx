@@ -28,7 +28,6 @@ interface Package {
   id: number;
   section_id: number;
   package_no: string;
-  status: string;
   bidder_count: number;
   item_count: number;
   bidders: Bidder[];
@@ -156,15 +155,6 @@ const ProjectDetail: React.FC = () => {
     }
   };
 
-  const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; text: string }> = {
-      pending: { color: 'default', text: '待处理' },
-      processing: { color: 'processing', text: '评审中' },
-      completed: { color: 'success', text: '已完成' },
-    };
-    return configs[status] || configs.pending;
-  };
-
   const getEvaluationStatusConfig = (status: string) => {
     const configs: Record<string, { color: string; text: string }> = {
       pending: { color: 'default', text: '待评审' },
@@ -269,8 +259,6 @@ const ProjectDetail: React.FC = () => {
     );
   }
 
-  const status = getStatusConfig(project.status);
-
   return (
     <div>
       <Button
@@ -293,7 +281,6 @@ const ProjectDetail: React.FC = () => {
             </Title>
             <Space>
               <Tag color="blue">{project.project_code}</Tag>
-              <Tag color={status.color}>{status.text}</Tag>
               <Text type="secondary">项目 ID: #{project.id}</Text>
             </Space>
           </div>
@@ -445,7 +432,7 @@ const ProjectDetail: React.FC = () => {
                         }
                       ]}
                       dataSource={section.packages}
-                      rowKey="id"
+                      rowKey={(record: any) => record.id}
                       pagination={false}
                       locale={{ emptyText: <Empty description="暂无包" /> }}
                     />
@@ -675,7 +662,7 @@ const ProjectDetail: React.FC = () => {
                   }
                 ]}
                 dataSource={filteredItems}
-                rowKey="id"
+                rowKey={(record: any) => record.id}
                 pagination={{
                   defaultPageSize: 25,
                   pageSizeOptions: ['25', '50', '100'],

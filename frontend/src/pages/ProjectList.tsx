@@ -9,7 +9,9 @@ import {
   FolderOpenOutlined, InboxOutlined, BankOutlined,
   ReloadOutlined, RightOutlined
 } from '@ant-design/icons';
+import { AuthContext } from '../contexts/AuthContext';
 import PageHeader from '../components/PageHeader';
+import './ProjectList.css';
 
 const { Title, Text } = Typography;
 
@@ -23,7 +25,6 @@ interface Package {
   id: number;
   section_id: number;
   package_no: string;
-  status: string;
   bidder_count: number;
   bidders: Bidder[];
 }
@@ -41,7 +42,6 @@ interface Project {
   id: number;
   project_code: string;
   project_name: string;
-  status: string;
   created_at: string;
   updated_at: string;
   section_count: number;
@@ -127,13 +127,6 @@ const ProjectList: React.FC = () => {
     });
   };
 
-  const getStatusConfig = (status: string) => {
-    const configs: Record<string, { color: string; text: string }> = {
-      pending: { color: 'default', text: '待处理' },
-      processing: { color: 'processing', text: '评审中' },
-      completed: { color: 'success', text: '已完成' },
-    };
-    return configs[status] || configs.pending;
   };
 
   const filteredProjects = projects.filter(project =>
@@ -162,16 +155,6 @@ const ProjectList: React.FC = () => {
           {name}
         </a>
       )
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => {
-        const config = getStatusConfig(status);
-        return <Tag color={config.color}>{config.text}</Tag>;
-      }
     },
     {
       title: '标段数',
@@ -273,7 +256,7 @@ const ProjectList: React.FC = () => {
           columns={columns}
           dataSource={filteredProjects}
           loading={loading}
-          rowKey="id"
+          rowKey={(record: Project) => record.id}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

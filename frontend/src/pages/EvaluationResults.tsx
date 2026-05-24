@@ -395,7 +395,7 @@ const EvaluationResults: React.FC = () => {
                     <div style={{ paddingLeft: 8 }}>
                       <Table
                         dataSource={groupedSection.packages}
-                        rowKey="id"
+                        rowKey={(record: any) => record.id}
                         pagination={false}
                         size="small"
                         bordered={false}
@@ -541,7 +541,7 @@ const EvaluationResults: React.FC = () => {
                 </div>
                 <Table
                   dataSource={selectedBidderDetail.items}
-                  rowKey="id"
+                  rowKey={(record: any) => record.id}
                   pagination={{ pageSize: 10 }}
                   bordered={false}
                   style={{ backgroundColor: '#fff', borderRadius: 6 }}
@@ -641,7 +641,7 @@ const EvalPackageDetail: React.FC<{
 
       <Table
         dataSource={progress.bidder_progress}
-        rowKey="bidder_id"
+        rowKey={(record: any) => record.bidder_id}
         pagination={{ pageSize: 5 }}
         size="small"
         bordered={false}

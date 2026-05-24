@@ -13,11 +13,81 @@ import {
   CheckCircleOutlined, ReloadOutlined, EyeOutlined, DeleteOutlined, DownloadOutlined,
   LoadingOutlined, FileSearchOutlined
 } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
 import { evaluationItemService, PackageItemWithDetails } from '../services/evaluationItemService';
 const AlertCircleOutlined = AlertOutlined;
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
+
+const MAX_CONTENT_HEIGHT = 150;
+
+const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const [isOverflow, setIsOverflow] = React.useState(false);
+
+  React.useEffect(() => {
+    if (contentRef.current) {
+      setIsOverflow(contentRef.current.scrollHeight > MAX_CONTENT_HEIGHT);
+    }
+  }, [content]);
+
+  const contentEl = (
+    <div 
+      ref={contentRef}
+      className="markdown-content-ellipsis"
+      style={{ 
+        maxWidth: 900, 
+        maxHeight: MAX_CONTENT_HEIGHT, 
+        overflow: 'hidden',
+        position: 'relative'
+      }}
+    >
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <p style={{ margin: '4px 0' }}>{children}</p>,
+          ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ol>,
+          li: ({ children }) => <li style={{ margin: '2px 0' }}>{children}</li>,
+          h1: ({ children }) => <h1 style={{ fontSize: 18, margin: '8px 0' }}>{children}</h1>,
+          h2: ({ children }) => <h2 style={{ fontSize: 16, margin: '6px 0' }}>{children}</h2>,
+          h3: ({ children }) => <h3 style={{ fontSize: 14, margin: '4px 0' }}>{children}</h3>,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+
+  if (isOverflow) {
+    return (
+      <Tooltip
+        title={
+          <div style={{ maxWidth: 600, maxHeight: 400, overflow: 'auto' }}>
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p style={{ margin: '4px 0' }}>{children}</p>,
+                ul: ({ children }) => <ul style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ul>,
+                ol: ({ children }) => <ol style={{ margin: '4px 0', paddingLeft: 20 }}>{children}</ol>,
+                li: ({ children }) => <li style={{ margin: '2px 0' }}>{children}</li>,
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        }
+        mouseEnterDelay={0.3}
+        mouseLeaveDelay={0.1}
+        placement="topLeft"
+        overlayStyle={{ maxWidth: 650 }}
+      >
+        {contentEl}
+      </Tooltip>
+    );
+  }
+
+  return contentEl;
+};
 
 interface Package {
   id: number;
@@ -540,17 +610,19 @@ const PackageEvaluationDetail: React.FC = () => {
               },
               {
                 title: '评审项内容',
-                dataIndex: 'item_description',
-                key: 'item_description',
-                render: (desc: string) => (
-                  <span style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
-                    {desc || '-'}
-                  </span>
-                )
+                key: 'item_content',
+                width: 900,
+                render: (record: any) => {
+                  const content = record.item_content || record.item_description;
+                  if (!content && content !== 0) {
+                    return <Text type="secondary">-</Text>;
+                  }
+                  return <MarkdownContent content={String(content)} />;
+                }
               }
             ]}
             dataSource={packageItems}
-            rowKey="package_item_id"
+            rowKey={(record, index) => record.package_item_id || record.id || `item-${index}`}
             pagination={{
               defaultPageSize: 25,
               pageSizeOptions: ['25', '50', '100'],
@@ -732,6 +804,7 @@ const PackageEvaluationDetail: React.FC = () => {
                 <Title level={5} style={{ margin: 0, marginBottom: 12 }}>各投标人转换状态</Title>
                 <Table
                   dataSource={conversionStatus.bidders}
+                  rowKey={(record: any, index: number) => record.bidder_id || record.id || `bidder-${index}`}
                   columns={[
                     {
                       title: '投标人',
