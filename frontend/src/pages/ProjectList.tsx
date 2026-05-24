@@ -9,9 +9,7 @@ import {
   FolderOpenOutlined, InboxOutlined, BankOutlined,
   ReloadOutlined, RightOutlined
 } from '@ant-design/icons';
-import { AuthContext } from '../contexts/AuthContext';
 import PageHeader from '../components/PageHeader';
-import './ProjectList.css';
 
 const { Title, Text } = Typography;
 
@@ -125,8 +123,6 @@ const ProjectList: React.FC = () => {
         }
       }
     });
-  };
-
   };
 
   const filteredProjects = projects.filter(project =>

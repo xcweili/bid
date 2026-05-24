@@ -55,7 +55,6 @@ interface Project {
   id: number;
   project_code: string;
   project_name: string;
-  status: string;
   created_at: string;
   updated_at: string;
   section_count: number;

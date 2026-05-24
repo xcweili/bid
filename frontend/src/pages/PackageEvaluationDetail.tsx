@@ -622,7 +622,7 @@ const PackageEvaluationDetail: React.FC = () => {
               }
             ]}
             dataSource={packageItems}
-            rowKey={(record, index) => record.package_item_id || record.id || `item-${index}`}
+            rowKey="package_item_id"
             pagination={{
               defaultPageSize: 25,
               pageSizeOptions: ['25', '50', '100'],
@@ -804,7 +804,7 @@ const PackageEvaluationDetail: React.FC = () => {
                 <Title level={5} style={{ margin: 0, marginBottom: 12 }}>各投标人转换状态</Title>
                 <Table
                   dataSource={conversionStatus.bidders}
-                  rowKey={(record: any, index: number) => record.bidder_id || record.id || `bidder-${index}`}
+                  rowKey="bidder_id"
                   columns={[
                     {
                       title: '投标人',
