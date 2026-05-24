@@ -66,10 +66,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || '登录失败');
+      let errorMsg = '登录失败';
+      try {
+        const errData = await res.json();
+        errorMsg = errData.detail || errorMsg;
+      } catch {
+        errorMsg = `服务器错误 (${res.status})`;
+      }
+      throw new Error(errorMsg);
     }
+    const data = await res.json();
     localStorage.setItem(TOKEN_KEY, data.token);
     setUser(data.user);
     lastActivityRef.current = Date.now();
