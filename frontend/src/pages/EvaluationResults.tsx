@@ -6,7 +6,7 @@ import {
 import {
   RestOutlined,
   CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
-  FolderOpenOutlined, InboxOutlined, FileTextOutlined, RightOutlined,
+  FolderOpenOutlined, InboxOutlined, RightOutlined,
   ClockCircleOutlined, ArrowUpOutlined, FilterOutlined, BarChartOutlined
 } from '@ant-design/icons';
 import PageHeader from '../components/PageHeader';
@@ -87,8 +87,6 @@ const EvaluationResults: React.FC = () => {
   const [progressMap, setProgressMap] = useState<Record<number, EvaluationProgress>>({});
   const [loading, setLoading] = useState(false);
   const [expandedPkgId, setExpandedPkgId] = useState<number | null>(null);
-  const [selectedBidderDetail, setSelectedBidderDetail] = useState<BidderDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   
   // 搜索筛选状态
   const [selectedProjectId, setSelectedProjectId] = useState<number | undefined>();
@@ -131,20 +129,6 @@ const EvaluationResults: React.FC = () => {
       message.error('获取数据失败');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadBidderDetail = async (packageId: number, bidderId: number) => {
-    setDetailLoading(true);
-    try {
-      const res = await fetch(`/api/packages/${packageId}/evaluation-detail/${bidderId}`);
-      if (res.ok) {
-        setSelectedBidderDetail(await res.json());
-      }
-    } catch {
-      message.error('获取评审详情失败');
-    } finally {
-      setDetailLoading(false);
     }
   };
 
@@ -480,7 +464,7 @@ const EvaluationResults: React.FC = () => {
                           <EvalPackageDetail
                             pkg={groupedSection.section.packages.find(p => p.id === expandedPkgId)!}
                             progress={progressMap[expandedPkgId]}
-                            onSelectBidder={loadBidderDetail}
+                            pkgId={expandedPkgId!}
                           />
                         </Card>
                       )}
@@ -509,41 +493,111 @@ const EvaluationResults: React.FC = () => {
         )}
       </Spin>
 
-      {selectedBidderDetail && (
-        <Card
-          title={
-            <Space>
-              <FileTextOutlined />
-              <span>{selectedBidderDetail.company_name} - 评审详情</span>
-            </Space>
-          }
-          extra={<Button size="small" onClick={() => setSelectedBidderDetail(null)}>关闭</Button>}
-          style={{ marginTop: 16, borderRadius: 8, border: '1px solid #e8e8e8' }}
-        >
-          <Spin spinning={detailLoading}>
-            {selectedBidderDetail.items.length === 0 ? (
-              <Empty description="暂无评审结果" />
-            ) : (
-              <div>
-                <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: '#f5f5f5', borderRadius: 6 }}>
+
+    </div>
+  );
+};
+
+const EvalPackageDetail: React.FC<{
+  pkg: PackageSummary;
+  progress?: EvaluationProgress;
+  pkgId: number;
+}> = ({ pkg, progress, pkgId }) => {
+  const [expandedBidderId, setExpandedBidderId] = useState<number | null>(null);
+  const [bidderDetailMap, setBidderDetailMap] = useState<Record<number, BidderItemDetail[]>>({});
+  const [detailLoadingMap, setDetailLoadingMap] = useState<Record<number, boolean>>({});
+
+  if (!progress) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        <Empty description="暂无评审数据" />
+      </div>
+    );
+  }
+
+  if (!progress.bidder_progress || progress.bidder_progress.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        <Empty description="暂无评审数据" />
+      </div>
+    );
+  }
+
+  const loadBidderDetail = async (bidderId: number) => {
+    if (bidderDetailMap[bidderId]) return;
+    setDetailLoadingMap(prev => ({ ...prev, [bidderId]: true }));
+    try {
+      const res = await fetch(`/api/packages/${pkgId}/evaluation-detail/${bidderId}`);
+      if (res.ok) {
+        const data: BidderDetail = await res.json();
+        setBidderDetailMap(prev => ({ ...prev, [bidderId]: data.items }));
+      }
+    } catch {
+      message.error('获取评审详情失败');
+    } finally {
+      setDetailLoadingMap(prev => ({ ...prev, [bidderId]: false }));
+    }
+  };
+
+  const handleExpand = (expanded: boolean, record: BidderProgress) => {
+    setExpandedBidderId(expanded ? record.bidder_id : null);
+    if (expanded) {
+      loadBidderDetail(record.bidder_id);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px dashed #d9d9d9' }}>
+        <Space size="large">
+          <span style={{ color: '#595959' }}>评审项总数：</span>
+          <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_items} 项</Tag>
+          <span style={{ color: '#595959' }}>投标人总数：</span>
+          <Tag color="green" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_bidders} 家</Tag>
+        </Space>
+      </div>
+
+      <Table
+        dataSource={progress.bidder_progress}
+        rowKey={(record: any) => record.bidder_id}
+        pagination={{ pageSize: 5 }}
+        size="small"
+        bordered={false}
+        style={{ backgroundColor: '#fff', borderRadius: 6 }}
+        expandable={{
+          expandedRowRender: (record: BidderProgress) => {
+            const items = bidderDetailMap[record.bidder_id];
+            const loading = detailLoadingMap[record.bidder_id];
+
+            if (loading) {
+              return <div style={{ textAlign: 'center', padding: 20 }}><Spin /></div>;
+            }
+            if (!items || items.length === 0) {
+              return <Empty description="暂无评审结果" />;
+            }
+
+            return (
+              <div style={{ padding: '8px 0' }}>
+                <div style={{ marginBottom: 12, padding: '8px 12px', backgroundColor: '#f5f5f5', borderRadius: 6 }}>
                   <Space>
                     <ArrowUpOutlined style={{ color: '#1890ff' }} />
-                    <Text type="secondary">共 {selectedBidderDetail.items.length} 个评审项</Text>
+                    <Text type="secondary">共 {items.length} 个评审项</Text>
                     <Divider type="vertical" />
                     <Text type="secondary">
-                      已完成: {selectedBidderDetail.items.filter(i => i.evaluation_status === 'completed').length}
+                      已完成: {items.filter(i => i.evaluation_status === 'completed').length}
                     </Text>
                     <Divider type="vertical" />
                     <Text type="secondary">
-                      失败: {selectedBidderDetail.items.filter(i => i.evaluation_status === 'failed').length}
+                      失败: {items.filter(i => i.evaluation_status === 'failed').length}
                     </Text>
                   </Space>
                 </div>
                 <Table
-                  dataSource={selectedBidderDetail.items}
-                  rowKey={(record: any) => record.id}
-                  pagination={{ pageSize: 10 }}
+                  dataSource={items}
+                  rowKey={(r: any) => r.id}
+                  pagination={false}
                   bordered={false}
+                  size="small"
                   style={{ backgroundColor: '#fff', borderRadius: 6 }}
                   columns={[
                     {
@@ -556,7 +610,8 @@ const EvaluationResults: React.FC = () => {
                     {
                       title: '得分', dataIndex: 'score', key: 'score', width: 100,
                       render: (score: number) => (
-                        <Tag color={score && score >= 60 ? 'green' : score && score > 0 ? 'orange' : 'red'}>
+                        <Tag color={score && score >= 60 ? 'green' : score && score > 0 ? 'orange' : 'red'}
+                             style={{ fontSize: 14, fontWeight: 600, padding: '4px 12px' }}>
                           {score !== undefined && score !== null ? score.toFixed(2) : '-'}
                         </Tag>
                       )
@@ -599,53 +654,12 @@ const EvaluationResults: React.FC = () => {
                   ]}
                 />
               </div>
-            )}
-          </Spin>
-        </Card>
-      )}
-    </div>
-  );
-};
-
-const EvalPackageDetail: React.FC<{
-  pkg: PackageSummary;
-  progress?: EvaluationProgress;
-  onSelectBidder: (pkgId: number, bidderId: number) => void;
-}> = ({ pkg, progress, onSelectBidder }) => {
-  if (!progress) {
-    return (
-      <div style={{ textAlign: 'center', padding: '32px 0' }}>
-        <Empty description="暂无评审数据" />
-      </div>
-    );
-  }
-
-  if (!progress.bidder_progress || progress.bidder_progress.length === 0) {
-    return (
-      <div style={{ textAlign: 'center', padding: '32px 0' }}>
-        <Empty description="暂无评审数据" />
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px dashed #d9d9d9' }}>
-        <Space size="large">
-          <span style={{ color: '#595959' }}>评审项总数：</span>
-          <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_items} 项</Tag>
-          <span style={{ color: '#595959' }}>投标人总数：</span>
-          <Tag color="green" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_bidders} 家</Tag>
-        </Space>
-      </div>
-
-      <Table
-        dataSource={progress.bidder_progress}
-        rowKey={(record: any) => record.bidder_id}
-        pagination={{ pageSize: 5 }}
-        size="small"
-        bordered={false}
-        style={{ backgroundColor: '#fff', borderRadius: 6 }}
+            );
+          },
+          expandedRowKeys: expandedBidderId !== null ? [expandedBidderId] : [],
+          onExpand: handleExpand,
+          rowExpandable: () => true,
+        }}
         columns={[
           {
             title: '公司名称', dataIndex: 'company_name', key: 'company_name', width: 220,
@@ -680,29 +694,13 @@ const EvalPackageDetail: React.FC<{
             render: (score: number) => {
               const isValid = score !== undefined && score !== null;
               return (
-                <Tag color={isValid ? (score >= 60 ? 'gold' : 'red') : 'default'} 
+                <Tag color={isValid ? (score >= 60 ? 'gold' : 'red') : 'default'}
                      style={{ fontSize: 14, fontWeight: 600, padding: '4px 12px' }}>
                   {isValid ? Number(score).toFixed(2) : '-'}
                 </Tag>
               );
             }
           },
-          {
-            title: '操作', key: 'action', width: 100,
-            render: (_: any, record: BidderProgress) => {
-              const hasItems = record.total_items > 0;
-              return (
-                <Button
-                  size="small"
-                  type="link"
-                  onClick={() => onSelectBidder(pkg.id, record.bidder_id)}
-                  disabled={!hasItems}
-                >
-                  {hasItems ? '查看得分' : '-'}
-                </Button>
-              );
-            }
-          }
         ]}
       />
     </div>
