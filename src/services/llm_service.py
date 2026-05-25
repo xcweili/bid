@@ -24,12 +24,13 @@ QWEN_TEXT_MODEL = "qwen3-32b"
 QWEN_VL_MODEL = "qwen3-vl-32b-instruct"
 OCR_MODEL = "ocr"
 QWEN_122B_MODEL = "qwen3.5-122b"
+QWEN_35B_MODEL = "qwen3.5-35b"
 
 
 class LLMService:
     """LLM 服务类"""
     
-    def __init__(self, model: str = QWEN_122B_MODEL):
+    def __init__(self, model: str = QWEN_35B_MODEL):
         self.model = model
     
     def chat(self, system_content: str, user_content: str) -> str:
@@ -57,7 +58,7 @@ class LLMService:
             img_base64 = base64.b64encode(buffered.getvalue()).decode()
             
             response = client.chat.completions.create(
-                model=QWEN_122B_MODEL,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "你是一个多模态理解助手"},
                     {

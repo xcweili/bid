@@ -259,23 +259,23 @@ async def get_package_evaluation_progress(package_id: int, db: Session = Depends
         if completed_count == len(bidders) and len(bidders) > 0:
             # 所有公司都完成了，更新为 completed
             evaluation_status = "completed"
-            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 completed (所有公司完成)")
+            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 completed (所有公司完成)")
         elif failed_count > 0:
             # 有失败的公司，更新为 failed
             evaluation_status = "failed"
-            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 failed ({failed_count} 家公司失败)")
+            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 failed ({failed_count} 家公司失败)")
         elif evaluating_count > 0 or completed_count > 0:
             # 有进行中的评审或部分完成，保持 evaluating
             evaluation_status = "evaluating"
-            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (进行中)")
+            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (进行中)")
         else:
             # 还没有任何评审结果，刚启动
             evaluation_status = "evaluating"
-            logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (刚启动)")
+            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (刚启动)")
     else:
         # 其他状态直接使用后台设置的值
         evaluation_status = package.evaluation_status
-        logger.info(f"[EVAL_PROGRESS]   -> 使用后台状态: {evaluation_status}")
+        # logger.info(f"[EVAL_PROGRESS]   -> 使用后台状态: {evaluation_status}")
     
     return {
         "package_id": package_id,

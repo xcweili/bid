@@ -32,6 +32,7 @@ interface Package {
   item_count: number;
   bidders: Bidder[];
   evaluation_status?: string;
+  max_concurrency?: number;
   total_bidders?: number;
   bidder_progress?: Array<{
     bidder_id: number;
@@ -78,6 +79,8 @@ const ProjectDetail: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [bidderDetailVisible, setBidderDetailVisible] = useState(false);
   const [selectedBidder, setSelectedBidder] = useState<Bidder | null>(null);
+  const [concurrencyValue, setConcurrencyValue] = useState<number>(1);
+  const [concurrencySaving, setConcurrencySaving] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -187,7 +190,19 @@ const ProjectDetail: React.FC = () => {
     
     try {
       await evaluationItemService.setPackageItems(selectedPackage.id, selectedItemIds);
-      message.success('评审项配置成功');
+      
+      // 同时保存并发数设置
+      setConcurrencySaving(true);
+      try {
+        await fetch(`/api/packages/${selectedPackage.id}/concurrency?concurrency=${concurrencyValue}`, {
+          method: 'PUT'
+        });
+      } catch (e) {
+        console.warn('保存并发数失败，但不影响评审项配置:', e);
+      }
+      setConcurrencySaving(false);
+      
+      message.success('评审配置保存成功');
       setShowConfigModal(false);
       fetchPackageItems(selectedPackage.id);
     } catch (error) {
@@ -195,24 +210,24 @@ const ProjectDetail: React.FC = () => {
     }
   };
 
-  const handleStartEvaluation = async () => {
-    if (!selectedPackage) return;
-    
+  const handleStartEvaluation = async (pkg?: Package) => {
+    const targetPkg = pkg || selectedPackage;
+    if (!targetPkg) return;
+
     Modal.confirm({
       title: '启动评审',
-      content: `确定要对 "${selectedPackage.package_no}" 启动 AI 评审吗？将通过 Dify 工作流进行评审。`,
+      content: `确定要对 "${targetPkg.package_no}" 启动 AI 评审吗？将通过 Dify 工作流进行评审。`,
       okText: '启动',
       cancelText: '取消',
       onOk: async () => {
         try {
-          const res = await fetch(`/api/packages/${selectedPackage.id}/start-evaluation`, {
+          const res = await fetch(`/api/packages/${targetPkg.id}/start-evaluation`, {
             method: 'POST'
           });
           const data = await res.json();
           if (res.ok) {
             message.success(data.message || '评审已启动');
-            // 刷新页面以显示最新的评审状态
-            window.location.reload();
+            fetchProject();
           } else {
             message.error(data.detail || '启动失败');
           }
@@ -408,21 +423,18 @@ const ProjectDetail: React.FC = () => {
                                 icon={<SettingOutlined />}
                                 onClick={() => {
                                   setSelectedPackage(record);
+                                  setConcurrencyValue(record.max_concurrency || 1);
                                   fetchPackageItems(record.id);
                                   setShowConfigModal(true);
                                 }}
                               >
-                                配置评审项
+                                评审配置
                               </Button>
                               <Button
                                 size="small"
                                 type="primary"
                                 icon={<PlayCircleOutlined />}
-                                onClick={() => {
-                                  setSelectedPackage(record);
-                                  fetchPackageItems(record.id);
-                                  handleStartEvaluation();
-                                }}
+                                onClick={() => handleStartEvaluation(record)}
                               >
                                 启动评审
                               </Button>
@@ -563,15 +575,40 @@ const ProjectDetail: React.FC = () => {
         </TabPane>
       </Tabs>
 
-      {/* 评审项配置模态框 */}
+      {/* 评审配置模态框 */}
       <Modal
-        title={`配置 "${selectedPackage?.package_no}" 的评审项`}
+        title={`评审配置 - "${selectedPackage?.package_no}"`}
         visible={showConfigModal}
         width={800}
         footer={null}
         onCancel={() => setShowConfigModal(false)}
       >
         <div style={{ padding: 16 }}>
+
+          {/* 并发设置 */}
+          <div style={{ marginBottom: 24, padding: '16px 20px', background: '#f6f8fa', borderRadius: 8, border: '1px solid #e8e8e8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>并发评审数</div>
+                <div style={{ fontSize: 13, color: '#8c8c8c', lineHeight: 1.6 }}>
+                  控制同时调用 AI 评审的公司数。<br />
+                  设为 <Tag style={{ fontSize: 12, lineHeight: '18px', margin: 0 }}>1</Tag> 表示串行（逐个评审），设为更大的值可加速评审过程。
+                </div>
+              </div>
+              <Space>
+                <InputNumber
+                  min={1}
+                  max={20}
+                  value={concurrencyValue}
+                  onChange={(val) => setConcurrencyValue(val || 1)}
+                  style={{ width: 100 }}
+                  size="large"
+                />
+                <span style={{ fontSize: 13, color: '#595959' }}>个并发</span>
+              </Space>
+            </div>
+          </div>
+
           <Title level={5} style={{ marginBottom: 16 }}>选择评审项</Title>
           
           {/* 筛选区域 */}

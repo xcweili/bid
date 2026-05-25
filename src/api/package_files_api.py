@@ -10,6 +10,7 @@ import zipfile
 import shutil
 import threading
 import traceback
+import asyncio
 from pathlib import Path
 
 from models.project_structure import Package, Bidder, Section, Project
@@ -1372,6 +1373,32 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
         del parse_threads[(package_id, upload_id)]
 
 
+@router.put("/{package_id}/concurrency")
+async def update_package_concurrency(package_id: int, concurrency: int):
+    """设置包评审时的最大并发数"""
+    db = db_session()
+    try:
+        package = db.query(Package).filter(Package.id == package_id).first()
+        if not package:
+            raise HTTPException(status_code=404, detail="包不存在")
+
+        if concurrency < 1:
+            raise HTTPException(status_code=400, detail="并发数不能小于 1")
+
+        package.max_concurrency = concurrency
+        db.commit()
+        logger.info(f"[PKG:{package_id}] 并发上限已更新为: {concurrency}")
+
+        return {"message": "并发数已更新", "max_concurrency": concurrency}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新并发数失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新失败：{str(e)}")
+    finally:
+        db.close()
+
+
 @router.post("/{package_id}/start-evaluation")
 async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTasks):
     """通过 Dify 工作流启动评审（按评审项分组，每家公司的文件一起发送）"""
@@ -1429,8 +1456,10 @@ async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTas
 
 async def run_dify_evaluation(package_id: int):
     """后台执行 Dify 评审
-    按评审项分组，每个评审项对应一个 Dify 工作流，
-    所有公司的文件一起上传，并发执行不同评审项的工作流
+
+    全量并发池模式：
+    N家公司 × M个评审项 → 扁平化为 N×M 个独立任务 → 全量并发发出
+    通过每个评审项配置的 max_concurrency 控制并发上限
     """
     db = db_session()
     try:
@@ -1439,306 +1468,256 @@ async def run_dify_evaluation(package_id: int):
         if not package:
             logger.error(f"[DIFY:{package_id}] 包不存在")
             return
-        
+
         section = db.query(Section).filter(Section.id == package.section_id).first()
         project = db.query(Project).filter(Project.id == section.project_id).first() if section else None
-        
+
         package_no = package.package_no
         section_code = section.section_code if section else "未知标段"
         section_name = section.section_name if section else "未知标段名称"
         project_code = project.project_code if project else "未知项目"
         project_name = project.project_name if project else "未知项目名称"
-        
+
         logger.info(f"[DIFY:{package_id}] === 开始 Dify 评审 ===")
         logger.info(f"[DIFY:{package_id}] 项目: {project_code} - {project_name}")
         logger.info(f"[DIFY:{package_id}] 标段: {section_code} - {section_name}")
         logger.info(f"[DIFY:{package_id}] 包号: {package_no}")
-        
+
         bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
         package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
         item_ids = [pi.item_id for pi in package_items]
         items = db.query(EvaluationItem).filter(EvaluationItem.id.in_(item_ids)).all() if item_ids else []
-        
+
         logger.info(f"[DIFY:{package_id}] 参与评审公司: {len(bidders)} 家")
         for bidder in bidders:
             logger.info(f"[DIFY:{package_id}]   - {bidder.company_name} (ID:{bidder.id})")
-        
+
         logger.info(f"[DIFY:{package_id}] 评审项数量: {len(items)} 个")
         for item in items:
             logger.info(f"[DIFY:{package_id}]   - {item.item_code} - {item.item_name} (ID:{item.id})")
-        
+
+        # 全局并发上限从包配置读取，0 或 1=串行，>1=同时最多 N 个 Dify 请求
+        max_concurrency = package.max_concurrency or 1
+        semaphore = asyncio.Semaphore(max_concurrency)
+        logger.info(f"[DIFY:{package_id}] 全量并发池 - 并发上限: {max_concurrency}")
+
         src_dir = Path(__file__).parent.parent
-        
-        async def evaluate_item(pi, item):
-            """评估单个评审项下的所有公司"""
-            item_id = item.id
+
+        async def evaluate_company_item(pi, item, bidder, bound_filenames, api_key, base_url, workflow_id):
+            """评估单个 (公司 × 评审项) 组合
+
+            Args:
+                pi: PackageItem 关联记录
+                item: EvaluationItem 评审项
+                bidder: Bidder 投标人
+                bound_filenames: 评审项绑定的文件名列表（用于筛选）
+                api_key: Dify API Key
+                base_url: Dify API 基础地址
+                workflow_id: Dify 工作流 ID
+            """
             item_code = item.item_code
             item_name = item.item_name
-            
-            logger.info(f"[DIFY:{package_id}] --- 开始评审项 [{item_code}] {item_name} (ID:{item_id}) ---")
-            
-            # 获取评审项配置的参数，优先使用评审项配置，没有则使用默认值
-            api_key = item.api_key or config.DIFY_API_KEY
-            base_url = item.base_url or config.DIFY_BASE_URL
-            workflow_id = item.workflow_id  # 不使用默认值，未配置则为空
-            
-            logger.info(f"[DIFY:{package_id}] 评审项配置 - API Key: {'已配置' if api_key else '未配置'}, Base URL: {base_url or '使用默认'}, Workflow ID: {workflow_id or '未配置'}")
-            
-            # 检查 API Key
-            if not api_key:
-                logger.warning(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 未配置 API Key，跳过")
-                _mark_item_evaluation_failed(db, package_id, bidders, item, "未配置 API Key")
-                return
-            
-            # 获取评审项绑定的文件列表（用于筛选）
-            bound_filenames = [f.file_name for f in item.files] if item.files else []
-            logger.info(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 绑定文件: {bound_filenames or '无'}")
-            
+            bidder_name = bidder.company_name
+            bidder_id = bidder.id
+
+            logger.debug(f"[DIFY:{package_id}] 准备 (公司×评审项): {bidder_name} × {item_name}")
+
             try:
-                # 构建公司+文件列表
-                company_files = []
-                for bidder in bidders:
-                    logger.debug(f"[DIFY:{package_id}] 处理公司: {bidder.company_name} (ID:{bidder.id})")
-                    
-                    md_files_query = db.query(BidderFile).filter(
-                        BidderFile.bidder_id == bidder.id,
-                        BidderFile.file_type == "md",
-                        BidderFile.parse_status == "completed"
-                    )
-                    
-                    # 如果评审项绑定了文件，只选择匹配的文件
-                    if bound_filenames:
-                        # 精确匹配：将绑定的文件名（可能带.pdf或不带扩展名）转换为.md格式进行匹配
-                        matched_files = []
-                        
-                        # 预处理绑定文件名，转换为.md格式
-                        md_filenames_to_match = set()
-                        for bound_name in bound_filenames:
-                            # 提取基础文件名（去掉扩展名）
-                            base_name = bound_name.rsplit('.', 1)[0] if '.' in bound_name else bound_name
-                            # 加上.md后缀
-                            md_filename = f"{base_name}.md"
-                            md_filenames_to_match.add(md_filename)
-                        
-                        # 精确匹配
-                        for md_file in md_files_query.all():
-                            if md_file.file_name in md_filenames_to_match:
-                                matched_files.append(md_file)
-                        
-                        md_files = matched_files
-                        if not md_files:
-                            logger.warning(f"[DIFY:{package_id}] 投标人 {bidder.company_name} (ID:{bidder.id}) 未找到匹配文件，绑定文件: {bound_filenames}, 匹配目标: {md_filenames_to_match}")
-                        else:
-                            logger.debug(f"[DIFY:{package_id}] 投标人 {bidder.company_name} (ID:{bidder.id}) 匹配到 {len(md_files)} 个文件")
-                    else:
-                        md_files = md_files_query.all()
-                    
-                    if not md_files:
-                        logger.debug(f"[DIFY:{package_id}] 投标人 {bidder.company_name} (ID:{bidder.id}) 无有效文件，跳过")
-                        continue
-                    
-                    file_infos = []
-                    for md_file in md_files:
-                        # 数据库中存储的是相对于 pkg_{package_id} 目录的相对路径
-                        file_path_str = md_file.file_path
-                        
-                        # 构建完整文件路径
-                        file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
-                        if not file_path.exists():
-                            logger.warning(f"[DIFY:{package_id}] 文件不存在：{file_path}")
-                            continue
-                        
-                        # 上传文件到 Dify（使用评审项配置的 api_key 和 base_url）
-                        logger.info(f"[DIFY:{package_id}] 准备上传文件:")
-                        logger.info(f"[DIFY:{package_id}]   文件名: {md_file.file_name}")
-                        logger.info(f"[DIFY:{package_id}]   文件路径: {file_path}")
-                        logger.info(f"[DIFY:{package_id}]   文件大小: {file_path.stat().st_size} bytes")
-                        logger.info(f"[DIFY:{package_id}]   Base URL: {base_url}")
-                        file_info = await dify_service.upload_file(str(file_path), f"pkg_{package_no}", api_key, base_url)
-                        if file_info:
-                            file_infos.append({
-                                "file_name": md_file.file_name,
-                                "upload_file_id": file_info.get("id"),
-                                "bidder_id": bidder.id,
-                                "bidder_name": bidder.company_name
-                            })
-                            logger.debug(f"[DIFY:{package_id}] 文件上传成功: {md_file.file_name} -> {file_info.get('id')}")
-                        else:
-                            logger.warning(f"[DIFY:{package_id}] 文件上传失败: {md_file.file_name}")
-                    
-                    if file_infos:
-                        company_files.append({
-                            "bidder_id": bidder.id,
-                            "bidder_name": bidder.company_name,
-                            "files": file_infos
-                        })
-                        logger.info(f"[DIFY:{package_id}] 公司 {bidder.company_name} (ID:{bidder.id}) 准备 {len(file_infos)} 个文件")
-                
-                if not company_files:
-                    logger.warning(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 无有效文件，跳过")
+                # ====== 1. 查找并上传文件到 Dify ======
+                md_files_query = db.query(BidderFile).filter(
+                    BidderFile.bidder_id == bidder_id,
+                    BidderFile.file_type == "md",
+                    BidderFile.parse_status == "completed"
+                )
+
+                if bound_filenames:
+                    md_filenames_to_match = set()
+                    for bound_name in bound_filenames:
+                        base_name = bound_name.rsplit('.', 1)[0] if '.' in bound_name else bound_name
+                        md_filenames_to_match.add(f"{base_name}.md")
+
+                    matched_files = []
+                    for md_file in md_files_query.all():
+                        if md_file.file_name in md_filenames_to_match:
+                            matched_files.append(md_file)
+                    md_files = matched_files
+                else:
+                    md_files = md_files_query.all()
+
+                if not md_files:
+                    logger.warning(f"[DIFY:{package_id}] 公司 {bidder_name} × 评审项 {item_name} 无匹配文件，跳过")
+                    _save_evaluation_failed(db, package_id, bidder_id, pi.item_id, "无匹配文件")
                     return
-                
-                # 改为每家公司单独调用 Dify 工作流
+
+                upload_file_ids = []
+                for md_file in md_files:
+                    file_path_str = md_file.file_path
+                    file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / file_path_str
+                    if not file_path.exists():
+                        logger.warning(f"[DIFY:{package_id}] 文件不存在：{file_path}")
+                        continue
+
+                    file_info = await dify_service.upload_file(
+                        str(file_path), f"pkg_{package_no}", api_key, base_url
+                    )
+                    if file_info:
+                        upload_file_ids.append(file_info.get("id"))
+                        logger.debug(f"[DIFY:{package_id}] 文件上传成功: {md_file.file_name} -> {file_info.get('id')}")
+
+                if not upload_file_ids:
+                    logger.warning(f"[DIFY:{package_id}] 公司 {bidder_name} × 评审项 {item_name} 文件上传全部失败")
+                    _save_evaluation_failed(db, package_id, bidder_id, pi.item_id, "文件上传失败")
+                    return
+
+                # ====== 2. 调用 Dify 工作流（受信号量控制） ======
                 call_type = "带 workflow_id" if workflow_id else "不带 workflow_id"
-                
-                # 预留并发能力，当前设置为 1
-                CONCURRENCY_LIMIT = 1
-                semaphore = asyncio.Semaphore(CONCURRENCY_LIMIT)
-                
-                async def eval_with_semaphore(cf):
-                    async with semaphore:
-                        return await evaluate_single_company(cf)
-                
-                async def evaluate_single_company(company_file):
-                    """评估单家公司"""
-                    bidder_id = company_file["bidder_id"]
-                    bidder_name = company_file["bidder_name"]
-                    files = company_file["files"]
-                    
-                    logger.info(f"[DIFY:{package_id}] 执行评审项 [{item_code}] {item_name} ({call_type})，公司: {bidder_name}")
-                    
-                    # 构建 upload_files 列表
-                    upload_files = []
-                    for file_info in files:
-                        upload_files.append({
+                logger.info(f"[DIFY:{package_id}] ({call_type}) 公司: {bidder_name}, 评审项: {item_name}, 文件数: {len(upload_file_ids)}")
+
+                async with semaphore:
+                    upload_files = [
+                        {
                             "type": "document",
                             "transfer_method": "local_file",
                             "url": "",
-                            "upload_file_id": file_info.get("upload_file_id")
-                        })
-                    
-                    # 构建 inputs，包含 upload_files 和 input（公司名）
+                            "upload_file_id": fid
+                        }
+                        for fid in upload_file_ids
+                    ]
                     inputs = {
                         "upload_files": upload_files,
                         "input": bidder_name
                     }
-                    
-                    logger.debug(f"[DIFY:{package_id}] 工作流输入参数: {json.dumps(inputs, ensure_ascii=False)[:500]}...")
-                    
-                    result = await dify_service.run_workflow(inputs, f"pkg_{package_no}", workflow_id, "blocking", api_key, base_url)
-                    
-                    if not result:
-                        logger.error(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 公司 {bidder_name} 工作流执行失败，无返回结果")
-                        _mark_item_evaluation_failed(db, package_id, [b for b in bidders if b.id == bidder_id], item, "工作流执行失败")
-                        return
-                    
-                    data = result.get("data", {})
-                    outputs = data.get("outputs", {})
-                    run_id = result.get("workflow_run_id")
-                    status = data.get("status")
-                    elapsed_time = data.get("elapsed_time")
-                    total_tokens = data.get("total_tokens")
-                    
-                    logger.info(f"[DIFY:{package_id}] 工作流执行完成 - Run ID: {run_id}, 状态: {status}, 耗时: {elapsed_time}ms, 令牌数: {total_tokens}")
-                    
-                    # 解析结果并存储
-                    if outputs:
-                        logger.info(f"[DIFY:{package_id}] 解析公司 {bidder_name} 的评审结果")
-                        # 从 outputs 中查找该公司的得分
-                        # 支持多种返回格式：公司ID、公司名、result、text
-                        bidder_output = outputs.get("text") or {}
-                        
-                        # 使用解析函数处理Dify返回结果，包含兜底逻辑
-                        parsed_result = parse_dify_result(bidder_output)
-                        
-                        score = parsed_result["score"]
-                        reason = parsed_result["reason"]
-                        source_filename = parsed_result["source_filename"]
-                        source_page = parsed_result["source_page"]
-                        
-                        logger.info(f"[DIFY:{package_id}] 公司 {bidder_name} (ID:{bidder_id}) - 得分: {score}, 理由: {reason[:50]}...")
-                        
-                        result_record = EvaluationResult(
-                            package_id=package_id,
-                            bidder_id=bidder_id,
-                            item_id=pi.item_id,
-                            score=score,
-                            score_reason=reason,
-                            evaluation_basis="",
-                            source_filename=source_filename,
-                            source_page=source_page,
-                            source_quote=parsed_result["source_quote"],
-                            evaluation_status="completed"
-                        )
-                        db.add(result_record)
-                        
-                        # 记录工作流运行
-                        wf_run = DifyWorkflowRun(
-                            package_id=package_id,
-                            bidder_id=bidder_id,
-                            file_id=0,
-                            dify_workflow_run_id=run_id,
-                            status=data.get("status", "completed"),
-                            outputs=json.dumps(outputs, ensure_ascii=False) if outputs else None,
-                            error=data.get("error"),
-                            elapsed_time=elapsed_time,
-                            total_tokens=total_tokens,
-                            total_steps=data.get("total_steps"),
-                            finished_at=datetime.now()
-                        )
-                        db.add(wf_run)
-                        db.commit()
-                        logger.info(f"[DIFY:{package_id}] 公司 {bidder_name} 评审完成")
-                    else:
-                        logger.warning(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 公司 {bidder_name} 工作流返回无输出")
-                        _mark_item_evaluation_failed(db, package_id, [b for b in bidders if b.id == bidder_id], item, "工作流无输出")
-                    
-                    logger.info(f"[DIFY:{package_id}] --- 评审项 [{item_code}] {item_name} 公司 {bidder_name} 结束 ---")
-                
-                # 遍历每家公司，单独评审
-                for company_file in company_files:
-                    await evaluate_single_company(company_file)
-                
+
+                    result = await dify_service.run_workflow(
+                        inputs, f"pkg_{package_no}", workflow_id, "blocking", api_key, base_url
+                    )
+
+                if not result:
+                    logger.error(f"[DIFY:{package_id}] 公司 {bidder_name} × 评审项 {item_name} 工作流执行失败，无返回结果")
+                    _save_evaluation_failed(db, package_id, bidder_id, pi.item_id, "工作流执行失败")
+                    return
+
+                # ====== 3. 解析并保存结果 ======
+                data = result.get("data", {})
+                outputs = data.get("outputs", {})
+                run_id = result.get("workflow_run_id")
+                status = data.get("status")
+                elapsed_time = data.get("elapsed_time")
+                total_tokens = data.get("total_tokens")
+
+                logger.info(f"[DIFY:{package_id}] 工作流完成 - Run ID: {run_id}, 状态: {status}, 公司: {bidder_name}, 评审项: {item_name}, 耗时: {elapsed_time}ms, 令牌数: {total_tokens}")
+
+                if outputs:
+                    bidder_output = outputs.get("text") or {}
+                    parsed_result = parse_dify_result(bidder_output)
+
+                    score = parsed_result["score"]
+                    reason = parsed_result["reason"]
+
+                    logger.info(f"[DIFY:{package_id}] 公司 {bidder_name} (ID:{bidder_id}) × 评审项 {item_name} - 得分: {score}")
+
+                    result_record = EvaluationResult(
+                        package_id=package_id,
+                        bidder_id=bidder_id,
+                        item_id=pi.item_id,
+                        score=score,
+                        score_reason=reason,
+                        evaluation_basis="",
+                        source_filename=parsed_result["source_filename"],
+                        source_page=parsed_result["source_page"],
+                        source_quote=parsed_result["source_quote"],
+                        evaluation_status="completed"
+                    )
+                    db.add(result_record)
+
+                    wf_run = DifyWorkflowRun(
+                        package_id=package_id,
+                        bidder_id=bidder_id,
+                        file_id=0,
+                        dify_workflow_run_id=run_id,
+                        status=data.get("status", "completed"),
+                        outputs=json.dumps(outputs, ensure_ascii=False) if outputs else None,
+                        error=data.get("error"),
+                        elapsed_time=elapsed_time,
+                        total_tokens=total_tokens,
+                        total_steps=data.get("total_steps"),
+                        finished_at=datetime.now()
+                    )
+                    db.add(wf_run)
+                    db.commit()
+                else:
+                    logger.warning(f"[DIFY:{package_id}] 公司 {bidder_name} × 评审项 {item_name} 工作流返回无输出")
+                    _save_evaluation_failed(db, package_id, bidder_id, pi.item_id, "工作流无输出")
+
             except Exception as e:
-                logger.error(f"[DIFY:{package_id}] 评审项 [{item_code}] {item_name} 异常: {e}")
+                logger.error(f"[DIFY:{package_id}] 公司 {bidder_name} × 评审项 {item_name} 异常: {e}")
                 logger.error(f"[DIFY:{package_id}] 异常详情: {traceback.format_exc()}")
-                _mark_item_evaluation_failed(db, package_id, bidders, item, str(e))
-        
-        # 并发执行所有评审项
-        import asyncio
-        tasks = [evaluate_item(pi, item) for pi in package_items for item in items if item.id == pi.item_id]
-        logger.info(f"[DIFY:{package_id}] 开始并发执行 {len(tasks)} 个评审项")
-        await asyncio.gather(*tasks)
-        
-        # 更新包评审状态
+                _save_evaluation_failed(db, package_id, bidder_id, pi.item_id, str(e))
+
+        # ====== 构建全量并发任务列表：N家公司 × M个评审项 ======
+        all_tasks = []
+        for pi in package_items:
+            for item in items:
+                if item.id != pi.item_id:
+                    continue
+
+                api_key = item.api_key or config.DIFY_API_KEY
+                base_url = item.base_url or config.DIFY_BASE_URL
+                workflow_id = item.workflow_id
+
+                if not api_key:
+                    logger.warning(f"[DIFY:{package_id}] 评审项 {item.item_name} 未配置 API Key，跳过该评审项")
+                    for bidder in bidders:
+                        _save_evaluation_failed(db, package_id, bidder.id, pi.item_id, "API Key 未配置")
+                    continue
+
+                bound_filenames = [f.file_name for f in item.files] if item.files else []
+                logger.info(f"[DIFY:{package_id}] 评审项 [{item.item_code}] {item.item_name} 绑定文件: {bound_filenames or '无'}")
+
+                for bidder in bidders:
+                    all_tasks.append(
+                        evaluate_company_item(pi, item, bidder, bound_filenames, api_key, base_url, workflow_id)
+                    )
+
+        # ====== 全量并发执行 ======
+        logger.info(f"[DIFY:{package_id}] 全量并发池 - 任务总数: {len(all_tasks)} ({len(bidders)}家公司 × {len(items)}个评审项)")
+        await asyncio.gather(*all_tasks)
+
+        # ====== 统计结果 ======
         package = db.query(Package).filter(Package.id == package_id).first()
         total_items = len(package_items)
         completed_items = db.query(EvaluationResult).filter(
             EvaluationResult.package_id == package_id,
             EvaluationResult.evaluation_status == "completed"
         ).distinct(EvaluationResult.item_id).count()
-        
+
         failed_items = db.query(EvaluationResult).filter(
             EvaluationResult.package_id == package_id,
             EvaluationResult.evaluation_status == "failed"
         ).distinct(EvaluationResult.item_id).count()
-        
+
         package.evaluation_status = "completed" if completed_items >= total_items else "failed"
         db.commit()
-        
+
         logger.info(f"[DIFY:{package_id}] === Dify 评审完成 ===")
         logger.info(f"[DIFY:{package_id}] 项目: {project_code} - {project_name}")
         logger.info(f"[DIFY:{package_id}] 标段: {section_code} - {section_name}")
         logger.info(f"[DIFY:{package_id}] 包号: {package_no}")
+        logger.info(f"[DIFY:{package_id}] 并发上限: {max_concurrency}")
         logger.info(f"[DIFY:{package_id}] 评审状态: {package.evaluation_status}")
-        logger.info(f"[DIFY:{package_id}] 评审项总数: {total_items}")
-        logger.info(f"[DIFY:{package_id}] 成功完成: {completed_items}")
-        logger.info(f"[DIFY:{package_id}] 失败: {failed_items}")
-        
-        # 统计各公司得分
-        logger.info(f"[DIFY:{package_id}] 各公司评审结果统计:")
+        logger.info(f"[DIFY:{package_id}] 评审项总数: {total_items}, 成功: {completed_items}, 失败: {failed_items}")
+
         for bidder in bidders:
             total_score = db.query(EvaluationResult).filter(
                 EvaluationResult.package_id == package_id,
                 EvaluationResult.bidder_id == bidder.id,
                 EvaluationResult.evaluation_status == "completed"
             ).with_entities(EvaluationResult.score).all()
-            
             bidder_total = sum(s[0] or 0 for s in total_score)
             logger.info(f"[DIFY:{package_id}]   - {bidder.company_name} (ID:{bidder.id}): 总分 = {bidder_total}")
-        
+
         logger.info(f"[DIFY:{package_id}] === Dify 评审流程结束 ===")
-        
+
     except Exception as e:
         logger.error(f"[DIFY:{package_id}] === Dify 评审异常 ===")
         logger.error(f"[DIFY:{package_id}] 项目: {project_code} - {project_name}")
@@ -1757,19 +1736,18 @@ async def run_dify_evaluation(package_id: int):
         db.close()
 
 
-def _mark_item_evaluation_failed(db, package_id, bidders, item, error_message="Dify 工作流执行失败"):
-    """标记某个评审项下所有公司的评估为失败"""
+def _save_evaluation_failed(db, package_id, bidder_id, item_id, error_message="Dify 工作流执行失败"):
+    """标记单个 (公司 × 评审项) 组合评估为失败"""
     try:
-        for bidder in bidders:
-            result = EvaluationResult(
-                package_id=package_id,
-                bidder_id=bidder.id,
-                item_id=item.id,
-                score=0,
-                score_reason=error_message,
-                evaluation_status="failed"
-            )
-            db.add(result)
+        result = EvaluationResult(
+            package_id=package_id,
+            bidder_id=bidder_id,
+            item_id=item_id,
+            score=0,
+            score_reason=error_message,
+            evaluation_status="failed"
+        )
+        db.add(result)
         db.commit()
     except Exception as e:
         logger.error(f"标记评审失败异常: {e}")

@@ -1,8 +1,9 @@
 """评审结果模型"""
 from sqlalchemy import Column, Integer, Float, String, Text, Boolean, ForeignKey, DateTime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from models.database import Base
+
 
 class EvaluationResult(Base):
     """评审结果模型"""
@@ -24,8 +25,8 @@ class EvaluationResult(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
     # 关系
-    package = relationship('Package', backref='results')
-    bidder = relationship('Bidder', backref='results')
+    package = relationship('Package', backref=backref('results', cascade='all, delete-orphan'))
+    bidder = relationship('Bidder', backref=backref('results', cascade='all, delete-orphan'))
     item = relationship('EvaluationItem', backref='results')
     
     def to_dict(self):
