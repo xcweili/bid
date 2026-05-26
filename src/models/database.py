@@ -19,7 +19,30 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # 创建 scoped_session
-db_session = scoped_session(SessionLocal)
+_scoped_session = scoped_session(SessionLocal)
+
+
+class _AutoClosingSession:
+    def __call__(self):
+        sess = _scoped_session()
+        if not getattr(sess, '_db_closing', False):
+            sess._db_closing = False
+            original_close = sess.close
+            def _patched_close():
+                if not sess._db_closing:
+                    sess._db_closing = True
+                    try:
+                        original_close()
+                    finally:
+                        _scoped_session.remove()
+            sess.close = _patched_close
+        return sess
+
+    def remove(self):
+        _scoped_session.remove()
+
+
+db_session = _AutoClosingSession()
 
 # 创建 Base
 Base = declarative_base()

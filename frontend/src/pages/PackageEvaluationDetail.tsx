@@ -178,17 +178,8 @@ const PackageEvaluationDetail: React.FC = () => {
     }
   }, [projectId, packageId]);
   
-  // 轮询转换状态（PDF转换是后台长任务，需要自动轮询）
-  useEffect(() => {
-    if (!conversionStatus) return;
-    
-    if (conversionStatus.processing_count > 0) {
-      const interval = setInterval(() => {
-        fetchConversionStatus();
-      }, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [conversionStatus]);
+  // 移除自动轮询，改为手动刷新（用户通过按钮刷新状态）
+  // 上传状态和转换状态现在通过页面上的刷新按钮手动触发
 
   const fetchData = async () => {
     setLoading(true);
@@ -247,6 +238,27 @@ const PackageEvaluationDetail: React.FC = () => {
     }
   };
   
+  const fetchUploadStatus = async () => {
+    if (!uploadStatus?.uploadId) return;
+    
+    try {
+      const res = await fetch(`/api/packages/${packageId}/upload-status/${uploadStatus.uploadId}`);
+      const data = await res.json();
+      setUploadStatus({ 
+        status: data.status, 
+        progress: data.ocr_progress || 0, 
+        uploadId: uploadStatus.uploadId 
+      });
+      
+      // 如果任务已完成或已取消，刷新转换状态
+      if (data.status === 'completed' || data.status === 'cancelled' || data.status === 'failed') {
+        fetchConversionStatus();
+      }
+    } catch (error) {
+      console.error('获取上传状态失败:', error);
+    }
+  };
+
   const fetchConversionStatus = async () => {
     setConversionLoading(true);
     try {
@@ -276,10 +288,31 @@ const PackageEvaluationDetail: React.FC = () => {
       });
       const data = await res.json();
       message.success(data.message);
+      // 设置上传状态为处理中（重新转换任务）
+      setUploadStatus({ status: 'processing', progress: 0, uploadId: data.upload_id });
       // 刷新转换状态
       fetchConversionStatus();
     } catch (error) {
       message.error('重新转换失败');
+    }
+  };
+
+  const handleCancelUpload = async () => {
+    if (!uploadStatus?.uploadId) return;
+    
+    try {
+      const res = await fetch(`/api/packages/${packageId}/upload-status/${uploadStatus.uploadId}/cancel`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        message.success('已取消解析任务');
+        setUploadStatus({ ...uploadStatus, status: 'cancelled' });
+        fetchConversionStatus();
+      } else {
+        message.error('取消失败');
+      }
+    } catch (error) {
+      message.error('取消失败');
     }
   };
 
@@ -542,9 +575,9 @@ const PackageEvaluationDetail: React.FC = () => {
         </Space>
       </div>
 
-      {/* 上传状态提示（无自动轮询，用户手动刷新） */}
+      {/* 上传状态提示 */}
       {uploadStatus && (
-        <Card style={{ marginBottom: 24, borderColor: '#1890ff' }}>
+        <Card style={{ marginBottom: 24, borderColor: uploadStatus.status === 'processing' ? '#1890ff' : uploadStatus.status === 'cancelled' ? '#faad14' : '#52c41a' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {uploadStatus.status === 'processing' ? (
               <>
@@ -556,6 +589,11 @@ const PackageEvaluationDetail: React.FC = () => {
                 <CheckCircleOutlined style={{ color: '#52c41a' }} />
                 <Text style={{ color: '#52c41a' }}>文件解析完成</Text>
               </>
+            ) : uploadStatus.status === 'cancelled' ? (
+              <>
+                <AlertCircleOutlined style={{ color: '#faad14' }} />
+                <Text style={{ color: '#faad14' }}>文件解析已取消</Text>
+              </>
             ) : (
               <>
                 <AlertCircleOutlined style={{ color: '#ff4d4f' }} />
@@ -565,10 +603,31 @@ const PackageEvaluationDetail: React.FC = () => {
             <Button
               size="small"
               icon={<ReloadOutlined />}
-              onClick={() => { fetchConversionStatus(); }}
+              onClick={() => {
+                if (uploadStatus.uploadId && uploadStatus.status === 'processing') {
+                  fetchUploadStatus();
+                }
+                fetchConversionStatus();
+              }}
             >
               刷新转换状态
             </Button>
+            {uploadStatus.status === 'processing' && uploadStatus.uploadId && (
+              <Popconfirm
+                title="确认取消"
+                description="确定要取消当前解析任务吗？"
+                onConfirm={handleCancelUpload}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  size="small"
+                  danger
+                >
+                  取消解析
+                </Button>
+              </Popconfirm>
+            )}
           </div>
         </Card>
       )}

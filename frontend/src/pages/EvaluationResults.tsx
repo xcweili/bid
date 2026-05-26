@@ -560,7 +560,7 @@ const EvalPackageDetail: React.FC<{
       <Table
         dataSource={progress.bidder_progress}
         rowKey={(record: any) => record.bidder_id}
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
         size="small"
         bordered={false}
         style={{ backgroundColor: '#fff', borderRadius: 6 }}
@@ -667,22 +667,25 @@ const EvalPackageDetail: React.FC<{
           },
           {
             title: '评审进度', key: 'progress', width: 220,
-            render: (_: any, record: BidderProgress) => (
-              <Space>
-                <Progress
-                  percent={record.progress_pct}
-                  size="small"
-                  style={{ width: 120, margin: 0 }}
-                  status={record.progress_pct >= 100 ? 'success' : record.failed_items > 0 ? 'exception' : 'active'}
-                />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {record.completed_items}/{record.total_items}
-                </Text>
-              </Space>
-            )
+            render: (_: any, record: BidderProgress) => {
+              const executed = record.completed_items + record.failed_items;
+              return (
+                <Space>
+                  <Progress
+                    percent={record.progress_pct}
+                    size="small"
+                    style={{ width: 120, margin: 0 }}
+                    status={record.progress_pct >= 100 ? 'success' : 'active'}
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {executed}/{record.total_items}
+                  </Text>
+                </Space>
+              );
+            }
           },
           {
-            title: '完成', dataIndex: 'completed_items', key: 'completed', width: 80,
+            title: '成功', dataIndex: 'completed_items', key: 'completed', width: 80,
             render: (v: number) => <Tag color="green">{v}</Tag>
           },
           {

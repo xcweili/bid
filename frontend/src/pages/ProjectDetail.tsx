@@ -589,10 +589,10 @@ const ProjectDetail: React.FC = () => {
           <div style={{ marginBottom: 24, padding: '16px 20px', background: '#f6f8fa', borderRadius: 8, border: '1px solid #e8e8e8' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>并发评审数</div>
+                <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>最大并发数</div>
                 <div style={{ fontSize: 13, color: '#8c8c8c', lineHeight: 1.6 }}>
-                  控制同时调用 AI 评审的公司数。<br />
-                  设为 <Tag style={{ fontSize: 12, lineHeight: '18px', margin: 0 }}>1</Tag> 表示串行（逐个评审），设为更大的值可加速评审过程。
+                  同时控制 <strong>PDF解析</strong> 和 <strong>AI评审</strong> 的并发数。<br />
+                  设为 <Tag style={{ fontSize: 12, lineHeight: '18px', margin: 0 }}>1</Tag> 表示串行（逐个处理），设为更大的值可加速处理过程。
                 </div>
               </div>
               <Space>

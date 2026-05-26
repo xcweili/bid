@@ -24,7 +24,7 @@ class BidderFile(Base):
     created_at = Column(DateTime, default=datetime.now)
     
     # 关系
-    bidder = relationship('Bidder', backref='files')
+    bidder = relationship('Bidder', back_populates='files')
     
     def to_dict(self):
         return {
@@ -51,6 +51,7 @@ class PackageFileUpload(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     package_id = Column(Integer, ForeignKey('packages.id'), nullable=False)  # 关联包
     zip_file_path = Column(String(500))  # 上传的zip文件路径
+    extract_dir = Column(String(500))  # 解压后的目录路径（存储实际的二级目录，如"投标文件-技术"）
     status = Column(String(50), default='pending')  # 整体状态：pending, processing, completed, failed
     total_files = Column(Integer, default=0)  # 总文件数
     parsed_files = Column(Integer, default=0)  # 已解析文件数
@@ -58,13 +59,14 @@ class PackageFileUpload(Base):
     completed_at = Column(DateTime)  # 完成时间
     
     # 关系
-    package = relationship('Package', backref='file_uploads')
+    package = relationship('Package', back_populates='file_uploads')
     
     def to_dict(self):
         return {
             "id": self.id,
             "package_id": self.package_id,
             "zip_file_path": self.zip_file_path,
+            "extract_dir": self.extract_dir,
             "status": self.status,
             "total_files": self.total_files,
             "parsed_files": self.parsed_files,

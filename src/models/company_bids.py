@@ -1,6 +1,6 @@
 """数据库模型 - 公司标书"""
 from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from models.database import Base
 
@@ -22,7 +22,7 @@ class CompanyBid(Base):
     
     # 新增：与投标人的关联
     bidder_id = Column(Integer, ForeignKey('bidders.id'))
-    bidder = relationship('Bidder', backref='company_bids')
+    bidder = relationship('Bidder', backref=backref('company_bids', cascade='all, delete-orphan'))
     
     def to_dict(self):
         return {

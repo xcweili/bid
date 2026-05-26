@@ -1,4 +1,4 @@
-"""包文件上传API"""
+﻿"""包文件上传API"""
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional, Any
@@ -224,7 +224,7 @@ async def upload_package_files(
         logger.error(f"上传文件失败：{e}")
         raise HTTPException(status_code=500, detail=f"上传失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 def find_company_folders(root_dir: Path) -> List[Path]:
@@ -487,7 +487,7 @@ def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_e
         except:
             pass
     finally:
-        db.close()
+        db_session.remove()
         # 清理线程记录
         del parse_threads[(package_id, upload_id)]
 
@@ -576,6 +576,27 @@ def _update_ocr_status(md_file_id: int, **kwargs):
         logger.error(f"更新 OCR 状态失败 md_file_id={md_file_id}: {e}")
 
 
+def _ocr_single_image(ocr_service, image_full_path: str, image_rel_path: str) -> str:
+    """对单张图片进行 OCR 识别，返回清理后的文本，失败返回空字符串"""
+    import re as _re
+    try:
+        if not os.path.exists(image_full_path):
+            logger.warning(f"图片文件不存在: {image_full_path}")
+            return ""
+        logger.info(f"正在 OCR 识别图片: {image_rel_path}")
+        ocr_text = ocr_service.ocr_image(image_full_path)
+        if ocr_text and "OCR 识别失败" not in ocr_text:
+            ocr_text = _re.sub(r'\n{3,}', '\n\n', ocr_text.strip())
+            logger.info(f"图片 OCR 识别成功: {image_rel_path}")
+            return ocr_text
+        else:
+            logger.warning(f"图片 OCR 识别失败: {image_rel_path}")
+            return ""
+    except Exception as e:
+        logger.error(f"图片 OCR 识别异常 {image_rel_path}: {e}")
+        return ""
+
+
 def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) -> Optional[Path]:
     """将 PDF 文件转换为 Markdown 文件（使用 OpenDataLoader）
     
@@ -660,42 +681,45 @@ def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) ->
             else:
                 _update_ocr_status(md_file_id, ocr_total_images=total_images)
         
-        # 如果有图片，进行 OCR 识别并替换
+        # 如果有图片，并发进行 OCR 识别（并发数 5），收集结果后一次性替换
         if image_matches:
             ocr_service = OCRService()
+            ocr_concurrency = min(5, len(image_matches))
+            logger.info(f"开始并发 OCR 识别 {len(image_matches)} 张图片，并发数: {ocr_concurrency}")
             
-            for full_match, image_rel_path, image_ext in image_matches:
-                # 图片的完整路径
+            # 第一步：并发识别所有图片
+            ocr_replacements = {}
+            import concurrent.futures
+            
+            ocr_executor = concurrent.futures.ThreadPoolExecutor(max_workers=ocr_concurrency)
+            future_to_image = {}
+            for full_match, image_rel_path, _ in image_matches:
                 image_full_path = temp_output_dir / image_rel_path
-                
-                if not image_full_path.exists():
-                    logger.warning(f"图片文件不存在: {image_full_path}")
-                    continue
-                
-                logger.info(f"正在 OCR 识别图片: {image_rel_path}")
-                
-                # OCR 识别
-                ocr_text = ocr_service.ocr_image(str(image_full_path))
-                
-                if ocr_text and "OCR 识别失败" not in ocr_text:
-                    # 清理 OCR 文本，移除多余空行
-                    ocr_text = re.sub(r'\n{3,}', '\n\n', ocr_text.strip())
-                    
-                    # 在 markdown 中添加 OCR 内容标识
-                    ocr_section = f"\n\n**[图片内容 OCR 识别]**\n\n{ocr_text}\n\n"
-                    
-                    # 用 str.replace 精确替换（避免 re.sub 中 OCR 文本含特殊字符时报错）
-                    md_content = md_content.replace(full_match, ocr_section)
-                    
-                    completed_images += 1
-                    
-                    # 更新 OCR 进度（使用独立 session）
-                    if md_file_id:
-                        _update_ocr_status(md_file_id, ocr_completed_images=completed_images)
-                    
-                    logger.info(f"图片 OCR 识别成功: {image_rel_path}")
-                else:
-                    logger.warning(f"图片 OCR 识别失败: {image_rel_path}")
+                future = ocr_executor.submit(
+                    _ocr_single_image, ocr_service, str(image_full_path), image_rel_path
+                )
+                future_to_image[future] = (full_match, image_rel_path)
+            
+            try:
+                for future in concurrent.futures.as_completed(future_to_image):
+                    full_match, image_rel_path = future_to_image[future]
+                    try:
+                        ocr_text = future.result()
+                        if ocr_text:
+                            ocr_replacements[full_match] = ocr_text
+                            completed_images += 1
+                    except Exception as e:
+                        logger.error(f"图片 OCR 识别异常 {image_rel_path}: {e}")
+            finally:
+                ocr_executor.shutdown(wait=False)
+            
+            # 第二步：一次性全部替换
+            if ocr_replacements:
+                for full_match, ocr_text in ocr_replacements.items():
+                    md_content = md_content.replace(
+                        full_match,
+                        f"\n\n**[图片内容 OCR 识别]**\n\n{ocr_text}\n\n"
+                    )
         
         # 更新 OCR 状态为完成（使用独立 session）
         if md_file_id:
@@ -738,7 +762,7 @@ def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) ->
 
 
 @router.get("/{package_id}/upload-status/{upload_id}")
-async def get_upload_status(package_id: int, upload_id: int):
+def get_upload_status(package_id: int, upload_id: int):
     """获取文件上传解析状态"""
     db = db_session()
     try:
@@ -792,11 +816,11 @@ async def get_upload_status(package_id: int, upload_id: int):
         
         return result
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/bidders/{bidder_id}/files")
-async def get_bidder_files(package_id: int, bidder_id: int):
+def get_bidder_files(package_id: int, bidder_id: int):
     """获取投标人的文件列表"""
     db = db_session()
     try:
@@ -817,15 +841,14 @@ async def get_bidder_files(package_id: int, bidder_id: int):
             "files": [f.to_dict() for f in files]
         }
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/bidders/{bidder_id}/file-tree")
-async def get_bidder_file_tree(package_id: int, bidder_id: int):
-    """获取投标人的文件树结构"""
+def get_bidder_file_tree(package_id: int, bidder_id: int):
+    """获取投标人的文件树结构（从DB记录构建，不依赖文件系统目录名）"""
     db = db_session()
     try:
-        # 验证投标人属于该包
         bidder = db.query(Bidder).filter(
             Bidder.id == bidder_id,
             Bidder.package_id == package_id
@@ -834,91 +857,69 @@ async def get_bidder_file_tree(package_id: int, bidder_id: int):
         if not bidder:
             raise HTTPException(status_code=404, detail="投标人不存在")
         
-        # 从文件系统直接读取文件树（使用绝对路径）
-        src_dir = Path(__file__).parent.parent
-        package_files_dir = src_dir / "data" / "package_files" / f"pkg_{package_id}" / "投标文件"
+        files = db.query(BidderFile).filter(
+            BidderFile.bidder_id == bidder_id
+        ).all()
         
-        # 由于数据库中公司名称可能是乱码，直接遍历文件系统找到匹配的文件夹
-        company_folder = None
-        if package_files_dir.exists():
-            for item in package_files_dir.iterdir():
-                if item.is_dir():
-                    # 检查该文件夹下的文件是否属于该投标人
-                    for sub_item in item.rglob('*'):
-                        if sub_item.is_file():
-                            file_name = sub_item.name
-                            # 尝试匹配数据库中的文件记录
-                            file_record = db.query(BidderFile).filter(
-                                BidderFile.bidder_id == bidder_id,
-                                BidderFile.file_name.like(f"%{file_name}%")
-                            ).first()
-                            if file_record:
-                                company_folder = item
-                                break
-                    if company_folder:
-                        break
+        # 从 file_path 构建树结构
+        # file_path 格式: "投标文件-技术\公司名\子文件夹\文件名.pdf"
+        # 跳过前两层（根目录层 + 公司层），从子文件夹开始
+        tree_root = {}  # {folder_name: {children...}} 或 "__files__": [file_nodes]
         
-        # 如果没找到匹配的文件夹，尝试使用乱码名称
-        if company_folder is None:
-            company_folder = package_files_dir / bidder.company_name
-        
-        # 构建文件树的辅助函数
-        def build_tree(path: Path, parent_path: Path = None):
-            tree = []
-            if not path.exists():
-                return tree
+        for f in files:
+            if not f.file_path:
+                continue
+            parts = f.file_path.replace('\\', '/').split('/')
+            if len(parts) < 2:
+                continue
+            # 跳过根目录层和公司层，从第三层开始
+            relevant = parts[2:]
+            if not relevant:
+                continue
             
-            # 获取所有子项并排序（文件夹在前，文件在后）
-            items = sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name))
+            current = tree_root
+            for i, part in enumerate(relevant[:-1]):
+                if part not in current:
+                    current[part] = {}
+                current = current[part]
             
-            for item in items:
-                rel_path = item.relative_to(parent_path) if parent_path else item
-                key = str(rel_path).replace('\\', '/')
-                title = item.name
-                
-                if item.is_dir():
-                    children = build_tree(item, parent_path) if parent_path else build_tree(item, item)
-                    tree.append({
+            file_node = {
+                "key": f.file_path.replace('\\', '/'),
+                "title": f.file_name,
+                "type": "file",
+                "children": None,
+                "file_id": f.id,
+                "file_type": f.file_type or (f.file_name.split('.')[-1] if '.' in f.file_name else "other"),
+                "file_size": f.file_size or 0,
+                "parse_status": f.parse_status or "pending"
+            }
+            if "__files__" not in current:
+                current["__files__"] = []
+            current["__files__"].append(file_node)
+        
+        def dict_to_tree(d: dict) -> list:
+            """将嵌套字典转换为文件树列表"""
+            result = []
+            for key, value in d.items():
+                if key == "__files__":
+                    result.extend(value)
+                else:
+                    children = dict_to_tree(value) if isinstance(value, dict) else []
+                    result.append({
                         "key": key,
-                        "title": title,
+                        "title": key,
                         "type": "folder",
-                        "children": children if children else [],
+                        "children": children,
                         "file_id": None,
                         "file_type": None,
                         "file_size": None,
                         "parse_status": None
                     })
-                else:
-                    # 查找对应的数据库记录
-                    file_record = None
-                    try:
-                        # 尝试多种路径匹配
-                        rel_to_package = item.relative_to(package_files_dir)
-                        file_path_str = str(rel_to_package).replace('\\', '/')
-                        file_record = db.query(BidderFile).filter(
-                            BidderFile.bidder_id == bidder_id,
-                            BidderFile.file_path.like(f"%{item.name}")
-                        ).first()
-                    except:
-                        pass
-                    
-                    tree.append({
-                        "key": key,
-                        "title": title,
-                        "type": "file",
-                        "children": None,
-                        "file_id": file_record.id if file_record else None,
-                        "file_type": file_record.file_type if file_record else item.suffix.lower()[1:] if item.suffix else "other",
-                        "file_size": item.stat().st_size,
-                        "parse_status": file_record.parse_status if file_record else "completed"
-                    })
-            
-            return tree
+            # 文件夹在前，文件在后
+            result.sort(key=lambda x: (x["type"] == "file", x["title"]))
+            return result
         
-        # 直接从文件系统读取公司文件夹下的内容
-        file_tree = []
-        if company_folder.exists():
-            file_tree = build_tree(company_folder, company_folder)
+        file_tree = dict_to_tree(tree_root)
         
         return {
             "bidder_id": bidder_id,
@@ -926,11 +927,11 @@ async def get_bidder_file_tree(package_id: int, bidder_id: int):
             "file_tree": file_tree
         }
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.delete("/{package_id}/bidders/{bidder_id}/files/{file_id}")
-async def delete_bidder_file(package_id: int, bidder_id: int, file_id: int):
+def delete_bidder_file(package_id: int, bidder_id: int, file_id: int):
     """删除投标人的文件记录"""
     db = db_session()
     try:
@@ -956,11 +957,11 @@ async def delete_bidder_file(package_id: int, bidder_id: int, file_id: int):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"删除失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/upload-history")
-async def get_upload_history(package_id: int):
+def get_upload_history(package_id: int):
     """获取包的文件上传历史"""
     db = db_session()
     try:
@@ -970,11 +971,11 @@ async def get_upload_history(package_id: int):
         
         return [u.to_dict() for u in uploads]
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.delete("/{package_id}/files")
-async def delete_package_files(package_id: int):
+def delete_package_files(package_id: int):
     """删除包下所有文件记录和上传的ZIP文件"""
     db = db_session()
     try:
@@ -1024,11 +1025,11 @@ async def delete_package_files(package_id: int):
         logger.error(f"删除包文件失败: {e}")
         raise HTTPException(status_code=500, detail=f"删除失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/files/{file_id}/preview")
-async def preview_file(package_id: int, file_id: int):
+def preview_file(package_id: int, file_id: int):
     """预览文件内容"""
     from fastapi.responses import FileResponse
     from urllib.parse import quote
@@ -1088,11 +1089,11 @@ async def preview_file(package_id: int, file_id: int):
         logger.error(f"预览文件失败: {e}")
         raise HTTPException(status_code=500, detail=f"预览失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/files/{file_id}/content")
-async def get_file_content(package_id: int, file_id: int):
+def get_file_content(package_id: int, file_id: int):
     """获取文件内容（用于抽屉预览）"""
     db = db_session()
     try:
@@ -1142,11 +1143,11 @@ async def get_file_content(package_id: int, file_id: int):
         logger.error(f"获取文件内容失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取文件内容失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/conversion-status")
-async def get_package_conversion_status(package_id: int):
+def get_package_conversion_status(package_id: int):
     """获取包的PDF转换状态"""
     db = db_session()
     try:
@@ -1222,11 +1223,11 @@ async def get_package_conversion_status(package_id: int):
         return result
         
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.post("/{package_id}/reconvert")
-async def reconvert_package_pdfs(package_id: int):
+def reconvert_package_pdfs(package_id: int):
     """重新转换包下所有PDF文件为MD"""
     import threading
     
@@ -1274,7 +1275,7 @@ async def reconvert_package_pdfs(package_id: int):
         logger.error(f"重新转换PDF失败：{e}")
         raise HTTPException(status_code=500, detail=f"重新转换失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
@@ -1369,12 +1370,12 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
     except Exception as e:
         logger.error(f"重新转换包PDF失败：{e}")
     finally:
-        db.close()
+        db_session.remove()
         del parse_threads[(package_id, upload_id)]
 
 
 @router.put("/{package_id}/concurrency")
-async def update_package_concurrency(package_id: int, concurrency: int):
+def update_package_concurrency(package_id: int, concurrency: int):
     """设置包评审时的最大并发数"""
     db = db_session()
     try:
@@ -1396,7 +1397,7 @@ async def update_package_concurrency(package_id: int, concurrency: int):
         logger.error(f"更新并发数失败: {e}")
         raise HTTPException(status_code=500, detail=f"更新失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.post("/{package_id}/start-evaluation")
@@ -1426,7 +1427,7 @@ async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTas
         if not bidders:
             raise HTTPException(status_code=400, detail="该包下没有投标人")
         
-        conversion_status = await get_package_conversion_status(package_id)
+        conversion_status = get_package_conversion_status(package_id)
         if not conversion_status["conversion_ready"]:
             if conversion_status["total_pdf_count"] == 0:
                 raise HTTPException(status_code=400, detail="请先上传并解析文件")
@@ -1451,7 +1452,7 @@ async def start_dify_evaluation(package_id: int, background_tasks: BackgroundTas
         logger.error(f"启动 Dify 评审失败: {e}")
         raise HTTPException(status_code=500, detail=f"启动失败：{str(e)}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 async def run_dify_evaluation(package_id: int):
@@ -1531,15 +1532,14 @@ async def run_dify_evaluation(package_id: int):
                 )
 
                 if bound_filenames:
-                    md_filenames_to_match = set()
-                    for bound_name in bound_filenames:
-                        base_name = bound_name.rsplit('.', 1)[0] if '.' in bound_name else bound_name
-                        md_filenames_to_match.add(f"{base_name}.md")
-
+                    import fnmatch
                     matched_files = []
                     for md_file in md_files_query.all():
-                        if md_file.file_name in md_filenames_to_match:
-                            matched_files.append(md_file)
+                        for bound_name in bound_filenames:
+                            pattern = bound_name if ('*' in bound_name or '?' in bound_name) else f"*{bound_name}*"
+                            if fnmatch.fnmatch(md_file.file_name, pattern):
+                                matched_files.append(md_file)
+                                break
                     md_files = matched_files
                 else:
                     md_files = md_files_query.all()
@@ -1733,7 +1733,7 @@ async def run_dify_evaluation(package_id: int):
         except Exception as commit_e:
             logger.error(f"[DIFY:{package_id}] 更新状态失败: {commit_e}")
     finally:
-        db.close()
+        db_session.remove()
 
 
 def _save_evaluation_failed(db, package_id, bidder_id, item_id, error_message="Dify 工作流执行失败"):
@@ -1754,7 +1754,7 @@ def _save_evaluation_failed(db, package_id, bidder_id, item_id, error_message="D
 
 
 @router.get("/{package_id}/evaluation-progress")
-async def get_evaluation_progress(package_id: int):
+def get_evaluation_progress(package_id: int):
     """获取包评审进度"""
     db = db_session()
     try:
@@ -1810,11 +1810,11 @@ async def get_evaluation_progress(package_id: int):
             "bidder_progress": bidder_progress
         }
     finally:
-        db.close()
+        db_session.remove()
 
 
 @router.get("/{package_id}/evaluation-detail/{bidder_id}")
-async def get_bidder_evaluation_detail(package_id: int, bidder_id: int):
+def get_bidder_evaluation_detail(package_id: int, bidder_id: int):
     """获取某个投标人的评审详情（每个评审项的得分、理由、依据）"""
     db = db_session()
     try:
@@ -1835,4 +1835,4 @@ async def get_bidder_evaluation_detail(package_id: int, bidder_id: int):
             "items": items_list
         }
     finally:
-        db.close()
+        db_session.remove()

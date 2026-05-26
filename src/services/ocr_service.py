@@ -38,12 +38,13 @@ class OCRService:
             return ""
 
         try:
-            # 读取图片并转换为 base64
-            img = Image.open(image_path)
-            buffered = BytesIO()
-            img.save(buffered, format=img.format)
-            img_base64 = base64.b64encode(buffered.getvalue()).decode()
-            
+            # 读取图片并转换为 base64（外层已在线程中运行，直接操作）
+            pil_img = Image.open(image_path)
+            img_format = pil_img.format or 'png'
+            buf = BytesIO()
+            pil_img.save(buf, format=img_format)
+            img_base64 = base64.b64encode(buf.getvalue()).decode()
+
             # 调用 GPUStack OCR API
             messages = [
                 {
@@ -52,7 +53,7 @@ class OCRService:
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/{img.format.lower()};base64,{img_base64}"
+                                "url": f"data:image/{img_format.lower()};base64,{img_base64}"
                             }
                         },
                         {
@@ -62,17 +63,18 @@ class OCRService:
                     ]
                 }
             ]
-            
+
             response = self.client.chat.completions.create(
                 model=self.OCR_MODEL,
                 messages=messages,
                 temperature=0.0,
+                timeout=30.0,
             )
-            
+
             ocr_text = response.choices[0].message.content
             logger.info(f"OCR 识别成功：{image_path}")
             return ocr_text or ""
-            
+
         except Exception as e:
             logger.error(f"OCR 识别失败 {image_path}: {e}")
             return f"[OCR 识别失败：{str(e)}]"

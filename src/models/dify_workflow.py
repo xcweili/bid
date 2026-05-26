@@ -1,6 +1,6 @@
 """Dify 工作流执行结果模型"""
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from models.database import Base
 
@@ -28,9 +28,9 @@ class DifyWorkflowRun(Base):
     finished_at = Column(DateTime)
     
     # 关系
-    package = relationship('Package', backref='workflow_runs')
-    bidder = relationship('Bidder', backref='workflow_runs')
-    bidder_file = relationship('BidderFile', backref='workflow_runs')
+    package = relationship('Package', backref=backref('workflow_runs', cascade='all, delete-orphan'))
+    bidder = relationship('Bidder', backref=backref('workflow_runs', cascade='all, delete-orphan'))
+    bidder_file = relationship('BidderFile', backref=backref('workflow_runs', cascade='all, delete-orphan'))
     
     def to_dict(self):
         return {

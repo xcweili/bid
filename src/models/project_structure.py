@@ -67,6 +67,7 @@ class Package(Base):
     section = relationship('Section', back_populates='packages')
     bidders = relationship('Bidder', back_populates='package', cascade='all, delete-orphan')
     package_items = relationship('PackageItem', back_populates='package', cascade='all, delete-orphan')
+    file_uploads = relationship('PackageFileUpload', back_populates='package', cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -93,6 +94,7 @@ class Bidder(Base):
     
     # 关系
     package = relationship('Package', back_populates='bidders')
+    files = relationship('BidderFile', back_populates='bidder', cascade='all, delete-orphan')
     
     def to_dict(self):
         return {

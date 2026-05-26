@@ -1,6 +1,6 @@
 """数据库模型 - 评审任务"""
 from sqlalchemy import Column, Integer, String, DateTime, Float, Text, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from models.database import Base
 
@@ -23,7 +23,7 @@ class EvaluationTask(Base):
     
     # 新增：与包的关联
     package_id = Column(Integer, ForeignKey('packages.id'))
-    package = relationship('Package', backref='evaluation_tasks')
+    package = relationship('Package', backref=backref('evaluation_tasks', cascade='all, delete-orphan'))
     
     def to_dict(self):
         return {
