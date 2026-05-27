@@ -60,7 +60,7 @@ const Login: React.FC = () => {
             📋
           </div>
           <Title level={3} style={{ margin: 0, color: '#1a1a1a' }}>
-            投标评审平台
+            zbps
           </Title>
           <Text type="secondary" style={{ fontSize: 14, marginTop: 8, display: 'block' }}>
             请登录以继续使用
