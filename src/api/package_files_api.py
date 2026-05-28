@@ -228,15 +228,16 @@ async def upload_package_files(
 
 
 def find_company_folders(root_dir: Path) -> List[Path]:
-    """递归查找所有公司文件夹（文件夹名包含"公司"字样）"""
+    """递归查找所有公司文件夹（文件夹名包含"公司"字样），优先取最深层的匹配"""
     company_folders = []
     try:
         for item in root_dir.iterdir():
             if item.is_dir():
-                if '公司' in item.name:
+                sub_folders = find_company_folders(item)
+                if sub_folders:
+                    company_folders.extend(sub_folders)
+                elif '公司' in item.name:
                     company_folders.append(item)
-                else:
-                    company_folders.extend(find_company_folders(item))
     except Exception as e:
         logger.error(f"查找公司文件夹失败 {root_dir}: {e}")
     return company_folders
@@ -664,8 +665,8 @@ def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) ->
         # 读取 markdown 内容
         md_content = temp_md_path.read_text(encoding='utf-8')
         
-        # 查找所有图片链接
-        image_pattern = r'!\[.*?\]\(([^)]+\.(png|jpg|jpeg|gif))\)'
+        # 查找所有图片链接（支持带尖括号和不带尖括号两种格式）
+        image_pattern = r'!\[.*?\]\(<?([^)>]+\.(?:png|jpg|jpeg|gif))>?\)'
         image_iter = list(re.finditer(image_pattern, md_content))
         image_matches = [(m.group(0), m.group(1), m.group(2)) for m in image_iter]
         
