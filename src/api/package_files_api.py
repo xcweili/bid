@@ -666,7 +666,7 @@ def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) ->
         md_content = temp_md_path.read_text(encoding='utf-8')
         
         # 查找所有图片链接（支持带尖括号和不带尖括号两种格式）
-        image_pattern = r'!\[.*?\]\(<?([^)>]+\.(?:png|jpg|jpeg|gif))>?\)'
+        image_pattern = r'!\[.*?\]\(<?([^)>]+\.(png|jpg|jpeg|gif))>?\)'
         image_iter = list(re.finditer(image_pattern, md_content))
         image_matches = [(m.group(0), m.group(1), m.group(2)) for m in image_iter]
         
