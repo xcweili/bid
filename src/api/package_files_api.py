@@ -541,8 +541,9 @@ def decode_filename(name: str) -> str:
         return name
     
     decode_attempts = [
+        ('latin-1', 'utf-8'),  # 新增：处理 UTF-8 字节被当作 latin-1 的情况
+        ('cp437', 'utf-8'),    # 处理常见的 ZIP 编码问题
         ('cp437', 'gbk'),
-        ('cp437', 'utf-8'),
         ('cp437', 'gb2312'),
         ('utf-8', 'gbk'),
         ('latin-1', 'gbk'),
@@ -663,7 +664,7 @@ def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) ->
         # 读取 markdown 内容
         md_content = temp_md_path.read_text(encoding='utf-8')
         
-        # 查找所有图片链接（完整匹配串 + 路径 + 扩展名）
+        # 查找所有图片链接
         image_pattern = r'!\[.*?\]\(([^)]+\.(png|jpg|jpeg|gif))\)'
         image_iter = list(re.finditer(image_pattern, md_content))
         image_matches = [(m.group(0), m.group(1), m.group(2)) for m in image_iter]
