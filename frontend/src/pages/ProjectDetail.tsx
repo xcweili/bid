@@ -658,7 +658,11 @@ const ProjectDetail: React.FC = () => {
                     render: (_: any, record: EvaluationItem) => (
                       <Checkbox
                         checked={selectedItemIds.includes(record.id)}
-                        onChange={(e) => handleItemSelect(record.id, e.target.checked)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleItemSelect(record.id, e.target.checked);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
                       />
                     )
                   },

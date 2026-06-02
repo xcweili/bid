@@ -506,6 +506,8 @@ const EvalPackageDetail: React.FC<{
   const [expandedBidderId, setExpandedBidderId] = useState<number | null>(null);
   const [bidderDetailMap, setBidderDetailMap] = useState<Record<number, BidderItemDetail[]>>({});
   const [detailLoadingMap, setDetailLoadingMap] = useState<Record<number, boolean>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   if (!progress) {
     return (
@@ -560,7 +562,16 @@ const EvalPackageDetail: React.FC<{
       <Table
         dataSource={progress.bidder_progress}
         rowKey={(record: any) => record.bidder_id}
-        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'] }}
+        pagination={{
+          current: currentPage,
+          pageSize: pageSize,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50', '100'],
+          onChange: (page, size) => {
+            setCurrentPage(page);
+            setPageSize(size);
+          }
+        }}
         size="small"
         bordered={false}
         style={{ backgroundColor: '#fff', borderRadius: 6 }}

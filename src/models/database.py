@@ -12,7 +12,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATABASE_PATH}")
 # 创建引擎
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    pool_size=20,  # 增加基础连接池大小
+    max_overflow=30,  # 增加溢出连接数
+    pool_timeout=60  # 增加等待超时时间
 )
 
 # 创建会话工厂
