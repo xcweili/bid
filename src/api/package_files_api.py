@@ -1,4 +1,4 @@
-"""包文件上传API"""
+﻿﻿"""包文件上传API"""
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional, Any
@@ -338,7 +338,10 @@ def process_package_files(package_id: int, upload_id: int, source_path: str, sto
         elif source_path_obj.is_dir():
             # 已经是目录，直接使用（用于 FTP 下载场景）
             logger.info(f"source_path 已是目录，直接使用：{source_path}")
+            # 如果 source_path 就是目标目录，不需要复制
             if source_path_obj != extract_dir:
+                # 复制文件到目标目录
+                import shutil
                 for item in source_path_obj.iterdir():
                     dest_item = extract_dir / item.name
                     if item.is_dir():
@@ -397,8 +400,7 @@ def process_package_files(package_id: int, upload_id: int, source_path: str, sto
             upload_record.completed_at = datetime.now()
             db.commit()
             db.close()
-            if (package_id, upload_id) in parse_threads:
-                del parse_threads[(package_id, upload_id)]
+            parse_threads.pop((package_id, upload_id), None)
             return
         
         logger.info(f"第一阶段完成：共扫描 {total_files} 个文件（含 {total_pdf_count} 个PDF）")
@@ -521,8 +523,7 @@ def process_package_files(package_id: int, upload_id: int, source_path: str, sto
     finally:
         db_session.remove()
         # 清理线程记录（FTP 下载场景可能没有这个 key）
-        if (package_id, upload_id) in parse_threads:
-            del parse_threads[(package_id, upload_id)]
+        parse_threads.pop((package_id, upload_id), None)
 
 
 def fix_filenames(root_dir: Path):
@@ -635,9 +636,11 @@ def clean_ocr_text(text: str) -> str:
     1. 截取前 1000 个字符（生产级兜底）。
     2. 去除连续重复行（解决风暴）。
     """
+    # 1. 硬性截断（最核心的一步）
     MAX_CHARS = 1000
     text = text[:MAX_CHARS]
 
+    # 2. 简单去重（防止截断后还剩少量重复）
     lines = text.splitlines()
     result = []
     prev = None
@@ -927,6 +930,9 @@ def get_bidder_file_tree(package_id: int, bidder_id: int):
             parts = f.file_path.replace('\\', '/').split('/')
             if len(parts) < 2:
                 continue
+            # 计算相对于公司目录的路径层级
+            # ZIP 上传：投标文件/A公司/子文件夹/文件.pdf → parts[2:] = ['子文件夹', '文件.pdf']
+            # FTP 下载：A公司/文件.pdf → len(parts)==2，直接取文件名
             if len(parts) == 2:
                 relevant = [parts[-1]]
             else:
@@ -1428,8 +1434,7 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
         logger.error(f"重新转换包PDF失败：{e}")
     finally:
         db_session.remove()
-        if (package_id, upload_id) in parse_threads:
-            del parse_threads[(package_id, upload_id)]
+        parse_threads.pop((package_id, upload_id), None)
 
 
 @router.put("/{package_id}/concurrency")
