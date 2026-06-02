@@ -73,6 +73,38 @@ def init_db():
     from models.user import User
     
     Base.metadata.create_all(bind=engine)
+    
+    # 执行增量迁移：添加可能缺失的列
+    _run_migrations()
+
+
+def _run_migrations():
+    """执行增量数据库迁移（添加可能缺失的列，不破坏已有数据）"""
+    import logging
+    import sqlite3
+    logger = logging.getLogger(__name__)
+    
+    migrations = [
+        "ALTER TABLE package_items ADD COLUMN evaluation_type VARCHAR(50)",
+        "ALTER TABLE package_items ADD COLUMN evaluation_stage VARCHAR(50)",
+        "ALTER TABLE package_items ADD COLUMN rule_category VARCHAR(50)",
+        "ALTER TABLE package_items ADD COLUMN rule_content TEXT",
+        "ALTER TABLE package_items ADD COLUMN bound_filenames TEXT",
+    ]
+    
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        for sql in migrations:
+            try:
+                cursor.execute(sql)
+                logger.info(f"迁移成功: {sql[:50]}...")
+            except Exception:
+                pass
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"数据库迁移执行失败（可忽略）: {e}")
 
 
 def close_db():

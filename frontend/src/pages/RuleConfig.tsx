@@ -47,6 +47,9 @@ const RuleConfig: React.FC = () => {
         item_content: formData.item_content || '',
         api_key: formData.api_key || '',
         base_url: formData.base_url || '',
+        evaluation_type: formData.evaluation_type || '',
+        evaluation_stage: formData.evaluation_stage || '',
+        rule_category: formData.rule_category || '',
       });
     }
   }, [showModal, formData]);
@@ -366,6 +369,41 @@ const RuleConfig: React.FC = () => {
             label="物资品类"
           >
             <Input placeholder="例如：信号系统、通信系统" />
+          </Form.Item>
+
+          <Form.Item
+            name="evaluation_type"
+            label="评审类型"
+          >
+            <Select placeholder="选择评审类型" style={{ width: '100%' }}>
+              <Option value="技术">技术</Option>
+              <Option value="商务">商务</Option>
+              <Option value="综合">综合</Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="evaluation_stage"
+            label="评审阶段"
+          >
+            <Select placeholder="选择评审阶段" style={{ width: '100%' }}>
+              <Option value="初评">初评</Option>
+              <Option value="详评">详评</Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="rule_category"
+            label="规则分类"
+          >
+            <Select placeholder="选择规则分类" style={{ width: '100%' }}>
+              <Option value="价格">价格</Option>
+              <Option value="技术">技术</Option>
+              <Option value="商务">商务</Option>
+              <Option value="资质">资质</Option>
+              <Option value="服务">服务</Option>
+              <Option value="其他">其他</Option>
+            </Select>
           </Form.Item>
 
           <Form.Item

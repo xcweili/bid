@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card, Typography, Tag, Button, Space, message,
   Descriptions, Tabs, Table, Statistic, Empty, Badge,
-  Modal, Checkbox, InputNumber, Tooltip, Divider, Select, Input, Progress
+  Modal, Checkbox, InputNumber, Tooltip, Divider, Select, Input, Progress, Drawer
 } from 'antd';
 import {
   ArrowLeftOutlined, FolderOpenOutlined, InboxOutlined,
   BankOutlined, ReloadOutlined, EyeOutlined, PlusOutlined,
   SaveOutlined, SettingOutlined, PlayCircleOutlined,
-  BarChartOutlined
+  BarChartOutlined, EditOutlined, DeleteOutlined
 } from '@ant-design/icons';
 import { evaluationItemService, EvaluationItem, PackageItemWithDetails } from '../services/evaluationItemService';
 
@@ -73,14 +73,34 @@ const ProjectDetail: React.FC = () => {
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
   const [allItems, setAllItems] = useState<EvaluationItem[]>([]);
   const [packageItems, setPackageItems] = useState<PackageItemWithDetails[]>([]);
+  const [packageItemsTotal, setPackageItemsTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
   const [searchText, setSearchText] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
   const [bidderDetailVisible, setBidderDetailVisible] = useState(false);
   const [selectedBidder, setSelectedBidder] = useState<Bidder | null>(null);
   const [concurrencyValue, setConcurrencyValue] = useState<number>(1);
   const [concurrencySaving, setConcurrencySaving] = useState(false);
+  // 编辑抽屉
+  const [showEditDrawer, setShowEditDrawer] = useState(false);
+  const [editingPackageItem, setEditingPackageItem] = useState<PackageItemWithDetails | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    evaluation_type: string;
+    evaluation_stage: string;
+    rule_category: string;
+    rule_content: string;
+    bound_filenames_text: string;
+    workflow_id: string;
+    api_key: string;
+    base_url: string;
+  }>({ evaluation_type: '', evaluation_stage: '', rule_category: '', rule_content: '', bound_filenames_text: '', workflow_id: '', api_key: '', base_url: '' });
+  // 从模板添加
+  const [showAddFromTemplate, setShowAddFromTemplate] = useState(false);
+  const [templateSearchText, setTemplateSearchText] = useState('');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -94,7 +114,7 @@ const ProjectDetail: React.FC = () => {
 
   useEffect(() => {
     if (selectedPackage) {
-      fetchPackageItems(selectedPackage.id);
+      fetchPackageItems(selectedPackage.id, 1, pageSize, searchText);
     }
   }, [selectedPackage]);
 
@@ -147,11 +167,13 @@ const ProjectDetail: React.FC = () => {
     }
   };
 
-  const fetchPackageItems = async (packageId: number) => {
+  const fetchPackageItems = async (packageId: number, page: number = 1, pageSize: number = 15, keyword: string = "") => {
     try {
-      const items = await evaluationItemService.getPackageItems(packageId);
-      setPackageItems(items);
-      setSelectedItemIds(items.map(item => item.id));
+      const result = await evaluationItemService.getPackageItems(packageId, page, pageSize, keyword);
+      setPackageItems(result.items);
+      setPackageItemsTotal(result.total);
+      setCurrentPage(result.page);
+      setSelectedItemIds([]);
     } catch (error) {
       console.error('获取包评审项失败:', error);
     }
@@ -185,6 +207,137 @@ const ProjectDetail: React.FC = () => {
     setShowConfigModal(true);
   };
 
+  const handleSaveConcurrency = async () => {
+    if (!selectedPackage) return;
+    setConcurrencySaving(true);
+    try {
+      await fetch(`/api/packages/${selectedPackage.id}/concurrency?concurrency=${concurrencyValue}`, {
+        method: 'PUT'
+      });
+      message.success('并发设置已保存');
+    } catch (e) {
+      console.warn('保存并发数失败:', e);
+      message.error('保存失败');
+    }
+    setConcurrencySaving(false);
+  };
+
+  const handleEditPackageItem = (item: PackageItemWithDetails) => {
+    setEditingPackageItem(item);
+    setEditForm({
+      evaluation_type: item.evaluation_type || '',
+      evaluation_stage: item.evaluation_stage || '',
+      rule_category: item.rule_category || '',
+      rule_content: item.rule_content || '',
+      bound_filenames_text: (item.bound_filenames || []).join('\n'),
+      workflow_id: item.workflow_id || '',
+      api_key: item.api_key || '',
+      base_url: item.base_url || ''
+    });
+    setShowEditDrawer(true);
+  };
+
+  const handleSaveEditPackageItem = async () => {
+    if (!selectedPackage || !editingPackageItem) return;
+    setEditSaving(true);
+    try {
+      const boundFilenames = editForm.bound_filenames_text
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean);
+      
+      await evaluationItemService.updatePackageItem(selectedPackage.id, editingPackageItem.item_id, {
+        evaluation_type: editForm.evaluation_type || undefined,
+        evaluation_stage: editForm.evaluation_stage || undefined,
+        rule_category: editForm.rule_category || undefined,
+        rule_content: editForm.rule_content || undefined,
+        bound_filenames: boundFilenames.length > 0 ? boundFilenames : undefined,
+        workflow_id: editForm.workflow_id || undefined,
+        api_key: editForm.api_key || undefined,
+        base_url: editForm.base_url || undefined
+      });
+      message.success('保存成功');
+      setShowEditDrawer(false);
+      // 刷新包配置
+      fetchPackageItems(selectedPackage.id, currentPage, pageSize, searchText);
+    } catch (error) {
+      message.error('保存失败');
+    }
+    setEditSaving(false);
+  };
+
+  const handleRemovePackageItem = async (item: PackageItemWithDetails) => {
+    if (!selectedPackage) return;
+    Modal.confirm({
+      title: '确认移除',
+      content: `确定要从包中移除评审项"${item.item_name}"吗？`,
+      okText: '移除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await evaluationItemService.removePackageItem(selectedPackage.id, item.id);
+          message.success('已移除');
+          fetchPackageItems(selectedPackage.id, currentPage, pageSize, searchText);
+        } catch (error) {
+          message.error('移除失败');
+        }
+      }
+    });
+  };
+
+  const handleBatchRemove = () => {
+    if (!selectedPackage || selectedItemIds.length === 0) return;
+    Modal.confirm({
+      title: '批量移除确认',
+      content: `确定要从包中移除选中的 ${selectedItemIds.length} 个评审项吗？`,
+      okText: '批量移除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          for (const itemId of selectedItemIds) {
+            await evaluationItemService.removePackageItem(selectedPackage.id, itemId);
+          }
+          message.success(`已成功移除 ${selectedItemIds.length} 个评审项`);
+          fetchPackageItems(selectedPackage.id, currentPage, pageSize, searchText);
+          setSelectedItemIds([]);
+        } catch (error) {
+          message.error('批量移除失败');
+        }
+      }
+    });
+  };
+
+  const handleAddFromTemplate = async (template: EvaluationItem) => {
+    if (!selectedPackage) return;
+    try {
+      const result = await evaluationItemService.addPackageItemFromTemplate(selectedPackage.id, template.id);
+      message.success(`已添加评审项"${template.item_name}"`);
+      // 刷新包配置
+      const items = await evaluationItemService.getPackageItems(selectedPackage.id);
+      setPackageItems(items);
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '添加失败');
+    }
+  };
+
+  const handleBatchAddFromTemplate = async () => {
+    if (!selectedPackage || selectedTemplateIds.length === 0) return;
+    try {
+      for (const templateId of selectedTemplateIds) {
+        await evaluationItemService.addPackageItemFromTemplate(selectedPackage.id, templateId);
+      }
+      message.success(`已成功添加 ${selectedTemplateIds.length} 个评审项`);
+      setShowAddFromTemplate(false);
+      setSelectedTemplateIds([]);
+      // 刷新包配置
+      fetchPackageItems(selectedPackage.id, currentPage, pageSize, searchText);
+    } catch (error: any) {
+      message.error(error.response?.data?.detail || '批量添加失败');
+    }
+  };
+
   const handleSaveConfig = async () => {
     if (!selectedPackage) return;
     
@@ -204,7 +357,7 @@ const ProjectDetail: React.FC = () => {
       
       message.success('评审配置保存成功');
       setShowConfigModal(false);
-      fetchPackageItems(selectedPackage.id);
+      fetchPackageItems(selectedPackage.id, currentPage, pageSize, searchText);
     } catch (error) {
       message.error('配置失败');
     }
@@ -254,15 +407,22 @@ const ProjectDetail: React.FC = () => {
   // 提取所有物资品类
   const categories = Array.from(new Set(allItems.map(item => item.material_category).filter(Boolean) as string[]));
 
-  // 过滤后的评审项
+  // 计算筛选后的评审项（用于选择配置）
   const filteredItems = allItems.filter(item => {
     const matchSearch = !searchText || 
       item.item_name.toLowerCase().includes(searchText.toLowerCase()) ||
       item.item_code.toLowerCase().includes(searchText.toLowerCase());
-    
-    const matchCategory = !categoryFilter || item.material_category === categoryFilter;
-    
-    return matchSearch && matchCategory;
+    return matchSearch;
+  });
+
+  // 计算筛选后的模板（用于从模板添加）
+  const filteredTemplateItems = allItems.filter(item => {
+    const matchSearch = !templateSearchText || 
+      item.item_name.toLowerCase().includes(templateSearchText.toLowerCase()) ||
+      item.item_code.toLowerCase().includes(templateSearchText.toLowerCase());
+    // 排除已在包中的
+    const alreadyInPackage = packageItems && packageItems.length > 0 && packageItems.some(pi => pi.item_id === item.id);
+    return matchSearch && !alreadyInPackage;
   });
 
   if (!project) {
@@ -424,7 +584,8 @@ const ProjectDetail: React.FC = () => {
                                 onClick={() => {
                                   setSelectedPackage(record);
                                   setConcurrencyValue(record.max_concurrency || 1);
-                                  fetchPackageItems(record.id);
+                                  setCurrentPage(1);
+                                  fetchPackageItems(record.id, 1, pageSize, searchText);
                                   setShowConfigModal(true);
                                 }}
                               >
@@ -579,7 +740,7 @@ const ProjectDetail: React.FC = () => {
       <Modal
         title={`评审配置 - "${selectedPackage?.package_no}"`}
         visible={showConfigModal}
-        width={800}
+        width={900}
         footer={null}
         onCancel={() => setShowConfigModal(false)}
       >
@@ -591,7 +752,7 @@ const ProjectDetail: React.FC = () => {
               <div>
                 <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>最大并发数</div>
                 <div style={{ fontSize: 13, color: '#8c8c8c', lineHeight: 1.6 }}>
-                  同时控制 <strong>PDF解析</strong> 和 <strong>AI评审</strong> 的并发数。<br />
+                  控制 <strong>AI评审</strong> 的并发数。<br />
                   设为 <Tag style={{ fontSize: 12, lineHeight: '18px', margin: 0 }}>1</Tag> 表示串行（逐个处理），设为更大的值可加速处理过程。
                 </div>
               </div>
@@ -609,129 +770,310 @@ const ProjectDetail: React.FC = () => {
             </div>
           </div>
 
-          <Title level={5} style={{ marginBottom: 16 }}>选择评审项</Title>
-          
-          {/* 筛选区域 */}
-          <div style={{ marginBottom: 16, display: 'flex', gap: 16 }}>
-            <Input.Search
-              placeholder="搜索评审项名称或编号"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              style={{ width: 250 }}
-              allowClear
-            />
-            <Select
-              placeholder="筛选物资品类"
-              value={categoryFilter || undefined}
-              onChange={setCategoryFilter}
-              style={{ width: 180 }}
-              allowClear
-            >
-              {categories.map(category => (
-                <Option key={category} value={category}>{category}</Option>
-              ))}
-            </Select>
-            <Button onClick={() => { setSearchText(''); setCategoryFilter(''); }}>
-              重置筛选
-            </Button>
-          </div>
-
-          <div style={{ maxHeight: 450, overflowY: 'auto' }}>
-            {filteredItems.length > 0 ? (
-              <Table
-                columns={[
-                  {
-                    title: (
-                      <Checkbox
-                        checked={selectedItemIds.length === filteredItems.length && filteredItems.length > 0}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedItemIds(filteredItems.map(item => item.id));
-                          } else {
-                            setSelectedItemIds([]);
-                          }
-                        }}
-                      />
-                    ),
-                    dataIndex: 'selected',
-                    width: 60,
-                    render: (_: any, record: EvaluationItem) => (
-                      <Checkbox
-                        checked={selectedItemIds.includes(record.id)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleItemSelect(record.id, e.target.checked);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )
-                  },
-                  {
-                    title: '评审项编号',
-                    dataIndex: 'item_code',
-                    width: 120
-                  },
-                  {
-                    title: '评审项名称',
-                    dataIndex: 'item_name'
-                  },
-                  {
-                    title: '物资品类',
-                    dataIndex: 'material_category',
-                    width: 120,
-                    render: (category: string) => category || '-'
-                  },
-                  {
-                    title: '绑定文件',
-                    dataIndex: 'files',
-                    width: 200,
-                    render: (files: any[]) => {
-                      if (!files || files.length === 0) {
-                        return <Text type="secondary">-</Text>;
-                      }
-                      const fileNames = files.map(f => f.file_name).slice(0, 2);
-                      const moreCount = files.length > 2 ? ` +${files.length - 2}` : '';
-                      return (
-                        <Tooltip title={files.map(f => f.file_name).join('\n')}>
-                          <Tag color="blue" style={{ fontSize: 12 }}>
-                            {fileNames.join(', ')}{moreCount}
-                          </Tag>
-                        </Tooltip>
-                      );
-                    }
-                  }
-                ]}
-                dataSource={filteredItems}
-                rowKey={(record: any) => record.id}
-                pagination={{
-                  defaultPageSize: 25,
-                  pageSizeOptions: ['25', '50', '100'],
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                  showQuickJumper: true
-                }}
-                onRow={(record) => ({
-                  onClick: () => {
-                    const isSelected = selectedItemIds.includes(record.id);
-                    handleItemSelect(record.id, !isSelected);
-                  }
-                })}
-              />
-            ) : (
-              <Empty description="暂无匹配的评审项" />
-            )}
-          </div>
-          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text type="secondary">
-              已选择 {selectedItemIds.length} 个评审项
-            </Text>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <Title level={5} style={{ margin: 0 }}>已配置的评审项</Title>
             <Space>
-              <Button onClick={() => setShowConfigModal(false)}>取消</Button>
-              <Button type="primary" onClick={handleSaveConfig} icon={<SaveOutlined />}>
-                保存配置
+              <Input.Search
+                placeholder="搜索编号或名称"
+                allowClear
+                enterButton
+                style={{ width: 250 }}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onSearch={() => {
+                  setCurrentPage(1);
+                  fetchPackageItems(selectedPackage!.id, 1, pageSize, searchText);
+                }}
+              />
+              {selectedItemIds.length > 0 && (
+                <Button danger icon={<DeleteOutlined />} onClick={handleBatchRemove}>
+                  批量移除 ({selectedItemIds.length})
+                </Button>
+              )}
+              <Button icon={<PlusOutlined />} onClick={() => setShowAddFromTemplate(true)}>
+                从模板添加
               </Button>
             </Space>
           </div>
+
+          {packageItems && packageItems.length > 0 ? (
+            <Table
+              rowSelection={{
+                type: 'checkbox',
+                selectedRowKeys: selectedItemIds,
+                onChange: (selectedRowKeys: number[]) => setSelectedItemIds(selectedRowKeys),
+              }}
+              columns={[
+                {
+                  title: '编号',
+                  dataIndex: 'item_code',
+                  width: 120
+                },
+                {
+                  title: '名称',
+                  dataIndex: 'item_name',
+                  width: 180
+                },
+                {
+                  title: '阶段',
+                  dataIndex: 'evaluation_stage',
+                  width: 90,
+                  render: (val: string) => val ? <Tag>{val}</Tag> : <Text type="secondary">-</Text>
+                },
+                {
+                  title: '分类',
+                  dataIndex: 'rule_category',
+                  width: 90,
+                  render: (val: string) => val ? <Tag>{val}</Tag> : <Text type="secondary">-</Text>
+                },
+                {
+                  title: '绑定文件',
+                  dataIndex: 'bound_filenames',
+                  width: 180,
+                  render: (val: string[]) => {
+                    if (!val || val.length === 0) return <Text type="secondary">-</Text>;
+                    return val.map((name, i) => <Tag key={i} style={{ fontSize: 11, marginBottom: 2 }}>{name}</Tag>);
+                  }
+                },
+                {
+                  title: '操作',
+                  width: 80,
+                  render: (_: any, record: PackageItemWithDetails) => (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => handleEditPackageItem(record)}>
+                      编辑
+                    </Button>
+                  )
+                }
+              ]}
+              dataSource={packageItems}
+              rowKey="id"
+              pagination={{
+                current: currentPage,
+                pageSize: pageSize,
+                total: packageItemsTotal,
+                showSizeChanger: true,
+                pageSizeOptions: ['10', '15', '20', '50'],
+                onChange: (page, size) => {
+                  setCurrentPage(page);
+                  setPageSize(size);
+                  fetchPackageItems(selectedPackage!.id, page, size, searchText);
+                },
+                onShowSizeChange: (current, size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                  fetchPackageItems(selectedPackage!.id, 1, size, searchText);
+                }
+              }}
+              size="small"
+            />
+          ) : (
+            <Empty description="暂未配置评审项，请点击「从模板添加」或通过项目导入接口推送" />
+          )}
+
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+            <Space>
+              <Button onClick={() => setShowConfigModal(false)}>关闭</Button>
+              <Button type="primary" onClick={handleSaveConcurrency} icon={<SaveOutlined />}>
+                保存并发设置
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 编辑评审项抽屉 */}
+      <Drawer
+        title={`编辑评审项 - ${editingPackageItem?.item_name || ''}`}
+        placement="right"
+        width={500}
+        open={showEditDrawer}
+        onClose={() => setShowEditDrawer(false)}
+      >
+        {editingPackageItem && (
+          <div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>评审项编号</label>
+              <Input value={editingPackageItem.item_code} disabled />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>评审项名称</label>
+              <Input value={editingPackageItem.item_name} disabled />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>评审类型</label>
+              <Select
+                value={editForm.evaluation_type}
+                onChange={(val) => setEditForm({ ...editForm, evaluation_type: val })}
+                style={{ width: '100%' }}
+                placeholder="选择评审类型"
+              >
+                <Option value="技术">技术</Option>
+                <Option value="商务">商务</Option>
+                <Option value="综合">综合</Option>
+              </Select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>评审阶段</label>
+              <Select
+                value={editForm.evaluation_stage}
+                onChange={(val) => setEditForm({ ...editForm, evaluation_stage: val })}
+                style={{ width: '100%' }}
+                placeholder="选择评审阶段"
+              >
+                <Option value="初评">初评</Option>
+                <Option value="详评">详评</Option>
+              </Select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>规则分类</label>
+              <Select
+                value={editForm.rule_category}
+                onChange={(val) => setEditForm({ ...editForm, rule_category: val })}
+                style={{ width: '100%' }}
+                placeholder="选择规则分类"
+              >
+                <Option value="价格">价格</Option>
+                <Option value="技术">技术</Option>
+                <Option value="商务">商务</Option>
+                <Option value="资质">资质</Option>
+                <Option value="服务">服务</Option>
+                <Option value="其他">其他</Option>
+              </Select>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>评审内容</label>
+              <Input.TextArea
+                rows={6}
+                value={editForm.rule_content}
+                onChange={(e) => setEditForm({ ...editForm, rule_content: e.target.value })}
+                placeholder="评审内容（可覆盖模板内容）"
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>绑定文件名（每行一个）</label>
+              <Input.TextArea
+                rows={3}
+                value={editForm.bound_filenames_text}
+                onChange={(e) => setEditForm({ ...editForm, bound_filenames_text: e.target.value })}
+                placeholder="售后 服务 支持"
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                评审时将根据文件名匹配投标人的文件，支持通配符 *
+              </Text>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Dify 工作流 ID</label>
+              <Input
+                value={editForm.workflow_id}
+                onChange={(e) => setEditForm({ ...editForm, workflow_id: e.target.value })}
+                placeholder="Dify Workflow ID"
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Dify API Key</label>
+              <Input
+                value={editForm.api_key}
+                onChange={(e) => setEditForm({ ...editForm, api_key: e.target.value })}
+                placeholder="Dify API Key"
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Dify Base URL</label>
+              <Input
+                value={editForm.base_url}
+                onChange={(e) => setEditForm({ ...editForm, base_url: e.target.value })}
+                placeholder="https://api.dify.ai/v1"
+              />
+            </div>
+            <div style={{ marginTop: 24, textAlign: 'right' }}>
+              <Space>
+                <Button onClick={() => setShowEditDrawer(false)}>取消</Button>
+                <Button type="primary" onClick={handleSaveEditPackageItem} loading={editSaving}>
+                  保存修改
+                </Button>
+              </Space>
+            </div>
+          </div>
+        )}
+      </Drawer>
+
+      {/* 从模板添加评审项 */}
+      <Modal
+        title="从模板添加评审项"
+        visible={showAddFromTemplate}
+        width={900}
+        footer={[
+          <Button key="cancel" onClick={() => {
+            setShowAddFromTemplate(false);
+            setSelectedTemplateIds([]);
+          }}>
+            取消
+          </Button>,
+          <Button 
+            key="add" 
+            type="primary" 
+            disabled={selectedTemplateIds.length === 0}
+            onClick={handleBatchAddFromTemplate}
+            icon={<PlusOutlined />}
+          >
+            批量添加 ({selectedTemplateIds.length})
+          </Button>
+        ]}
+        onCancel={() => {
+          setShowAddFromTemplate(false);
+          setSelectedTemplateIds([]);
+        }}
+      >
+        <div>
+          <Input.Search
+            placeholder="搜索评审项名称或编号"
+            value={templateSearchText}
+            onChange={(e) => setTemplateSearchText(e.target.value)}
+            style={{ marginBottom: 16, width: 300 }}
+            allowClear
+          />
+          {filteredTemplateItems.length > 0 ? (
+            <Table
+              rowSelection={{
+                type: 'checkbox',
+                selectedRowKeys: selectedTemplateIds,
+                onChange: (selectedRowKeys: number[]) => setSelectedTemplateIds(selectedRowKeys),
+              }}
+              columns={[
+                {
+                  title: '编号',
+                  dataIndex: 'item_code',
+                  width: 100
+                },
+                {
+                  title: '名称',
+                  dataIndex: 'item_name',
+                  width: 150
+                },
+                {
+                  title: '物资品类',
+                  dataIndex: 'material_category',
+                  width: 120,
+                  render: (val: string) => val || '-'
+                },
+                {
+                  title: '内容',
+                  dataIndex: 'item_content',
+                  render: (val: string) => {
+                    if (!val) return '-';
+                    // 显示前100个字符
+                    return val.length > 100 ? val.substring(0, 100) + '...' : val;
+                  }
+                }
+              ]}
+              dataSource={filteredTemplateItems}
+              rowKey="id"
+              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'] }}
+              size="small"
+            />
+          ) : (
+            <Empty description="暂无匹配的评审项模板" />
+          )}
         </div>
       </Modal>
 

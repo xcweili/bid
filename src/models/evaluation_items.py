@@ -1,4 +1,5 @@
 """数据库模型 - 评审项"""
+import json
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Table
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -56,13 +57,20 @@ class EvaluationItem(Base):
 
 
 class PackageItem(Base):
-    """包-评审项关联表"""
+    """包-评审项关联表（包级规则配置，独立存储，支持修改）"""
     __tablename__ = 'package_items'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     package_id = Column(Integer, ForeignKey('packages.id'), nullable=False)
     item_id = Column(Integer, ForeignKey('evaluation_items.id'), nullable=False)
     is_required = Column(Boolean, default=True)  # 是否必填
+    
+    # 包级规则独立配置字段（覆盖模板，不影响其他包）
+    evaluation_type = Column(String(50))  # 技术 / 商务
+    evaluation_stage = Column(String(50))  # 初评 / 详评
+    rule_category = Column(String(50))   # 规则分类
+    rule_content = Column(Text)           # 评审内容（可覆盖模板）
+    bound_filenames = Column(Text)        # JSON 数组，绑定的文件名列表
     
     # 关系
     package = relationship('Package', back_populates='package_items')
@@ -73,7 +81,12 @@ class PackageItem(Base):
             "id": self.id,
             "package_id": self.package_id,
             "item_id": self.item_id,
-            "is_required": self.is_required
+            "is_required": self.is_required,
+            "evaluation_type": self.evaluation_type,
+            "evaluation_stage": self.evaluation_stage,
+            "rule_category": self.rule_category,
+            "rule_content": self.rule_content,
+            "bound_filenames": json.loads(self.bound_filenames) if self.bound_filenames else []
         }
 
 

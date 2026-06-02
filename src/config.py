@@ -38,7 +38,15 @@ class Config:
     # JWT 认证配置
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "bid-evaluation-secret-key-change-in-production")
     JWT_ALGORITHM = "HS256"
-    JWT_EXPIRE_SECONDS = 1800  # 30分钟无操作超时
+    JWT_EXPIRE_SECONDS = 1800  # 30 分钟无操作超时
+    
+    # FTP 配置（默认值为空支持匿名登录）
+    FTP_HOST = os.getenv("FTP_HOST", "127.0.0.1")
+    FTP_PORT = int(os.getenv("FTP_PORT", "21"))
+    FTP_USERNAME = os.getenv("FTP_USERNAME", "")
+    FTP_PASSWORD = os.getenv("FTP_PASSWORD", "")
+    FTP_TIMEOUT = int(os.getenv("FTP_TIMEOUT", "30"))
+    FTP_USE_PASSIVE = os.getenv("FTP_USE_PASSIVE", "true").lower() == "true"
     
     @classmethod
     def init_app(cls):

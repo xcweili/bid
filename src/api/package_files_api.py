@@ -374,7 +374,8 @@ def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_e
             upload_record.completed_at = datetime.now()
             db.commit()
             db.close()
-            del parse_threads[(package_id, upload_id)]
+            if (package_id, upload_id) in parse_threads:
+                del parse_threads[(package_id, upload_id)]
             return
         
         logger.info(f"第一阶段完成：共扫描 {total_files} 个文件（含 {total_pdf_count} 个PDF）")
@@ -496,8 +497,9 @@ def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_e
             pass
     finally:
         db_session.remove()
-        # 清理线程记录
-        del parse_threads[(package_id, upload_id)]
+        # 清理线程记录（FTP 下载场景可能没有这个 key）
+        if (package_id, upload_id) in parse_threads:
+            del parse_threads[(package_id, upload_id)]
 
 
 def fix_filenames(root_dir: Path):
@@ -587,7 +589,6 @@ def _update_ocr_status(md_file_id: int, **kwargs):
 
 def _ocr_single_image(ocr_service, image_full_path: str, image_rel_path: str) -> str:
     """对单张图片进行 OCR 识别，返回清理后的文本，失败返回空字符串"""
-    import re as _re
     try:
         if not os.path.exists(image_full_path):
             logger.warning(f"图片文件不存在: {image_full_path}")
@@ -595,7 +596,7 @@ def _ocr_single_image(ocr_service, image_full_path: str, image_rel_path: str) ->
         logger.info(f"正在 OCR 识别图片: {image_rel_path}")
         ocr_text = ocr_service.ocr_image(image_full_path)
         if ocr_text and "OCR 识别失败" not in ocr_text:
-            ocr_text = _re.sub(r'\n{3,}', '\n\n', ocr_text.strip())
+            ocr_text = clean_ocr_text(ocr_text)
             logger.info(f"图片 OCR 识别成功: {image_rel_path}")
             return ocr_text
         else:
@@ -604,6 +605,28 @@ def _ocr_single_image(ocr_service, image_full_path: str, image_rel_path: str) ->
     except Exception as e:
         logger.error(f"图片 OCR 识别异常 {image_rel_path}: {e}")
         return ""
+
+
+def clean_ocr_text(text: str) -> str:
+    """
+    1. 截取前 1000 个字符（生产级兜底）。
+    2. 去除连续重复行（解决风暴）。
+    """
+    MAX_CHARS = 1000
+    text = text[:MAX_CHARS]
+
+    lines = text.splitlines()
+    result = []
+    prev = None
+    for line in lines:
+        line_strip = line.strip()
+        if not line_strip:
+            continue
+        if line_strip != prev:
+            result.append(line_strip)
+            prev = line_strip
+
+    return "\n".join(result)
 
 
 def pdf_to_markdown(pdf_path: Path, output_dir: Path, md_file_id: int = None) -> Optional[Path]:
@@ -881,8 +904,10 @@ def get_bidder_file_tree(package_id: int, bidder_id: int):
             parts = f.file_path.replace('\\', '/').split('/')
             if len(parts) < 2:
                 continue
-            # 跳过根目录层和公司层，从第三层开始
-            relevant = parts[2:]
+            if len(parts) == 2:
+                relevant = [parts[-1]]
+            else:
+                relevant = parts[2:]
             if not relevant:
                 continue
             
@@ -1380,7 +1405,8 @@ def reconvert_pdfs_for_package(package_id: int, upload_id: int, stop_event):
         logger.error(f"重新转换包PDF失败：{e}")
     finally:
         db_session.remove()
-        del parse_threads[(package_id, upload_id)]
+        if (package_id, upload_id) in parse_threads:
+            del parse_threads[(package_id, upload_id)]
 
 
 @router.put("/{package_id}/concurrency")

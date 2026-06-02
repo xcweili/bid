@@ -30,11 +30,30 @@ export interface PackageItemConfig {
   package_id: number;
   item_id: number;
   is_required: boolean;
+  evaluation_type?: string;
+  evaluation_stage?: string;
+  rule_category?: string;
+  rule_content?: string;
+  bound_filenames?: string[];
 }
 
-export interface PackageItemWithDetails extends EvaluationItem {
+export interface PackageItemWithDetails {
+  id: number;
+  package_id: number;
+  item_id: number;
   is_required: boolean;
-  package_item_id: number;
+  package_item_id?: number;
+  item_code: string;
+  item_name: string;
+  evaluation_type?: string;
+  evaluation_stage?: string;
+  rule_category?: string;
+  rule_content?: string;
+  bound_filenames?: string[];
+  workflow_id?: string;
+  api_key?: string;
+  base_url?: string;
+  evaluation_item?: EvaluationItem;
 }
 
 export interface FileCreateRequest {
@@ -75,9 +94,11 @@ export const evaluationItemService = {
     await api.delete(`/evaluation-items/${itemId}`);
   },
 
-  // 获取包已配置的评审项
-  getPackageItems: async (packageId: number): Promise<PackageItemWithDetails[]> => {
-    const response = await api.get(`/packages/${packageId}/items`);
+  // 获取包已配置的评审项（支持分页和搜索）
+  getPackageItems: async (packageId: number, page: number = 1, pageSize: number = 15, keyword: string = ""): Promise<{ items: PackageItemWithDetails[], total: number, page: number, page_size: number }> => {
+    const response = await api.get(`/packages/${packageId}/items`, {
+      params: { page, page_size: pageSize, keyword }
+    });
     return response.data;
   },
 
@@ -89,6 +110,12 @@ export const evaluationItemService = {
   // 更新包的评审项配置
   updatePackageItem: async (packageId: number, itemId: number, config: Partial<PackageItemConfig>): Promise<PackageItemConfig> => {
     const response = await api.put(`/packages/${packageId}/items/${itemId}`, config);
+    return response.data;
+  },
+
+  // 从模板添加评审项到包配置
+  addPackageItemFromTemplate: async (packageId: number, itemId: number): Promise<PackageItemWithDetails> => {
+    const response = await api.post(`/packages/${packageId}/items/from-template`, { item_id: itemId });
     return response.data;
   },
 
