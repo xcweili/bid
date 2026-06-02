@@ -35,6 +35,9 @@ export interface PackageItemConfig {
   rule_category?: string;
   rule_content?: string;
   bound_filenames?: string[];
+  workflow_id?: string;
+  api_key?: string;
+  base_url?: string;
 }
 
 export interface PackageItemWithDetails {

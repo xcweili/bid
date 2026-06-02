@@ -212,9 +212,11 @@ def get_package_items(
         if pi.item:
             item_dict['item_code'] = pi.item.item_code
             item_dict['item_name'] = pi.item.item_name
+            item_dict['material_category'] = pi.item.material_category
             # 如果包级没有覆盖 rule_content，则使用模板内容
             if not item_dict.get('rule_content'):
                 item_dict['rule_content'] = pi.item.item_content
+            item_dict['item_content'] = item_dict.get('rule_content')
             # 添加模板绑定的文件列表（优先使用包级配置，否则使用模板配置）
             if not item_dict.get('bound_filenames') or len(item_dict['bound_filenames']) == 0:
                 item_dict['bound_filenames'] = [file.file_name for file in pi.item.files]

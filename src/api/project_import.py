@@ -1,7 +1,6 @@
 """项目数据导入 API - 接收评标辅助系统推送接口"""
 import json
 import os
-import asyncio
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -118,71 +117,74 @@ def start_ftp_download_and_parse(
                     files_by_company[company_name] = []
                 files_by_company[company_name].append(remote_path)
         
-        # 启动异步下载（按公司分类下载）
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # 使用独立的临时目录下载，避免文件锁影响后续解析
+        import shutil
+        tmp_base = Path(os.path.dirname(__file__)).parent / "data" / "package_files" / f"_ftp_tmp_{package_id}"
+        if tmp_base.exists():
+            shutil.rmtree(tmp_base)
         
+        batch_tasks = []
+        for company_name, remote_paths in files_by_company.items():
+            batch_tasks.append({
+                "project_code": f"_ftp_tmp_{package_id}",
+                "section_code": company_name,
+                "package_no": "",
+                "files": [{"file_path": remote_paths}]
+            })
+        
+        def on_task_complete(task_key: str, result: dict):
+            for f in result.get('failed', []):
+                logger.warning(f"[FTP 下载] 文件下载失败：{f}")
+
+        ftp_service.download_batch(
+            tasks=batch_tasks,
+            on_task_complete=on_task_complete
+        )
+        
+        # 断开 FTP 后，把文件从临时目录移到目标目录
+        for company_name in files_by_company:
+            src = tmp_base / company_name
+            dst = extract_dir / company_name
+            dst.mkdir(parents=True, exist_ok=True)
+            if src.exists():
+                for item in src.iterdir():
+                    shutil.copy2(item, dst / item.name)
+                logger.debug(f"[FTP 下载] 已移动 {company_name} 文件到目标目录")
+        
+        # 清理临时目录
+        if tmp_base.exists():
+            shutil.rmtree(tmp_base)
+        
+        logger.info(f"[FTP 下载] 下载完成")
+        
+        # ========== 触发完整解析流程（与 zip 上传相同）==========
+        logger.info(f"[FTP 下载] 开始触发完整解析流程")
+        
+        # 导入解析函数
+        from api.package_files_api import process_package_files
+        import threading
+        
+        # 创建停止事件
+        stop_event = threading.Event()
+        
+        # 调用与 zip 上传相同的解析函数
+        process_package_files(package_id, upload_id, str(extract_dir), stop_event)
+        
+        logger.info(f"[FTP 下载] 解析流程已完成")
+        
+        # 更新上传记录（process_package_files 会关闭会话，需要重新获取）
         try:
-            downloaded_files = []
-            
-            def on_file_downloaded(remote_path: str, local_path: Path):
-                """文件下载完成后的回调"""
-                downloaded_files.append(str(local_path))
-                logger.debug(f"[FTP 下载] 文件已下载：{remote_path} -> {local_path}")
-            
-            # 按公司下载文件
-            for company_name, remote_paths in files_by_company.items():
-                # 创建公司文件夹
-                company_dir = extract_dir / company_name
-                company_dir.mkdir(parents=True, exist_ok=True)
-                
-                # 下载该公司的所有文件（路径：package_files/pkg_{package_id}/公司名称/）
-                company_files = [{'file_path': remote_paths}]
-                download_task = ftp_service.download_files_async(
-                    files=company_files,
-                    project_code=f"pkg_{package_id}",  # 与 zip 上传一致，添加 pkg_ 前缀
-                    section_code=company_name,          # 使用公司名称作为二级目录
-                    package_no="",                      # 空，文件直接放在公司目录下
-                    on_file_downloaded=on_file_downloaded
-                )
-                
-                result = loop.run_until_complete(download_task)
-                if not result['success']:
-                    logger.warning(f"[FTP 下载] 公司 {company_name} 部分文件下载失败")
-            
-            logger.info(f"[FTP 下载] 下载完成，共 {len(downloaded_files)} 个文件")
-            
-            # ========== 触发完整解析流程（与 zip 上传相同）==========
-            logger.info(f"[FTP 下载] 开始触发完整解析流程")
-            
-            # 导入解析函数
-            from api.package_files_api import process_package_files
-            import threading
-            
-            # 创建停止事件
-            stop_event = threading.Event()
-            
-            # 调用与 zip 上传相同的解析函数
-            process_package_files(package_id, upload_id, str(extract_dir), stop_event)
-            
-            logger.info(f"[FTP 下载] 解析流程已完成")
-            
-            # 更新上传记录（process_package_files 会关闭会话，需要重新获取）
-            try:
-                db = db_session()
-                upload_record = db.query(PackageFileUpload).filter(PackageFileUpload.id == upload_id).first()
-                if upload_record:
-                    upload_record.status = 'completed'
-                    upload_record.extract_dir = str(extract_dir)
-                    upload_record.completed_at = datetime.now()
-                    db.commit()
-                db.close()
-            except Exception as update_e:
-                logger.error(f"[FTP 下载] 更新上传记录失败：{update_e}")
-            
-        finally:
-            loop.close()
-            
+            db = db_session()
+            upload_record = db.query(PackageFileUpload).filter(PackageFileUpload.id == upload_id).first()
+            if upload_record:
+                upload_record.status = 'completed'
+                upload_record.extract_dir = str(extract_dir)
+                upload_record.completed_at = datetime.now()
+                db.commit()
+            db.close()
+        except Exception as update_e:
+            logger.error(f"[FTP 下载] 更新上传记录失败：{update_e}")
+        
     except Exception as e:
         logger.error(f"[FTP 下载] 任务失败：{project_code}-{section_code}-{package_no} - {e}", exc_info=True)
         # 更新上传记录为失败状态

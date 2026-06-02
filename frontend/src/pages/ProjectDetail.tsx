@@ -316,7 +316,7 @@ const ProjectDetail: React.FC = () => {
       message.success(`已添加评审项"${template.item_name}"`);
       // 刷新包配置
       const items = await evaluationItemService.getPackageItems(selectedPackage.id);
-      setPackageItems(items);
+      setPackageItems(items.items);
     } catch (error: any) {
       message.error(error.response?.data?.detail || '添加失败');
     }
@@ -801,7 +801,7 @@ const ProjectDetail: React.FC = () => {
               rowSelection={{
                 type: 'checkbox',
                 selectedRowKeys: selectedItemIds,
-                onChange: (selectedRowKeys: number[]) => setSelectedItemIds(selectedRowKeys),
+                onChange: (selectedRowKeys: React.Key[]) => setSelectedItemIds(selectedRowKeys as number[]),
               }}
               columns={[
                 {
@@ -1037,7 +1037,7 @@ const ProjectDetail: React.FC = () => {
               rowSelection={{
                 type: 'checkbox',
                 selectedRowKeys: selectedTemplateIds,
-                onChange: (selectedRowKeys: number[]) => setSelectedTemplateIds(selectedRowKeys),
+                onChange: (selectedRowKeys: React.Key[]) => setSelectedTemplateIds(selectedRowKeys as number[]),
               }}
               columns={[
                 {

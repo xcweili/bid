@@ -1,4 +1,4 @@
-﻿"""包文件上传API"""
+"""包文件上传API"""
 from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional, Any
@@ -296,8 +296,15 @@ def _scan_files_to_db(db, company_folder: Path, extract_dir: Path, bidder, total
     return total_files, parsed_files, scanned_pdfs
 
 
-def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_event: threading.Event):
-    """后台处理包文件解析（两阶段：先扫描入库，再逐个转换PDF）"""
+def process_package_files(package_id: int, upload_id: int, source_path: str, stop_event: threading.Event):
+    """后台处理包文件解析（两阶段：先扫描入库，再逐个转换PDF）
+    
+    Args:
+        package_id: 包ID
+        upload_id: 上传记录ID
+        source_path: ZIP文件路径或已解压的目录路径
+        stop_event: 停止事件
+    """
     db = db_session()
     total_files = 0
     parsed_files = 0
@@ -314,16 +321,32 @@ def process_package_files(package_id: int, upload_id: int, zip_path: str, stop_e
             upload_record.status = "processing"
             db.commit()
         
-        # 解压ZIP文件
+        # 确定提取目录
         src_dir = Path(__file__).parent.parent
         extract_dir = src_dir / "data" / "package_files" / f"pkg_{package_id}"
         extract_dir.mkdir(parents=True, exist_ok=True)
         
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-        
-        # 修复文件名编码
-        fix_filenames(extract_dir)
+        # 判断 source_path 是 ZIP 文件还是目录
+        source_path_obj = Path(source_path)
+        if source_path_obj.is_file() and source_path.lower().endswith('.zip'):
+            # 解压ZIP文件
+            with zipfile.ZipFile(source_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+            
+            # 修复文件名编码
+            fix_filenames(extract_dir)
+        elif source_path_obj.is_dir():
+            # 已经是目录，直接使用（用于 FTP 下载场景）
+            logger.info(f"source_path 已是目录，直接使用：{source_path}")
+            if source_path_obj != extract_dir:
+                for item in source_path_obj.iterdir():
+                    dest_item = extract_dir / item.name
+                    if item.is_dir():
+                        shutil.copytree(item, dest_item, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, dest_item)
+        else:
+            raise ValueError(f"无效的 source_path: {source_path}")
         
         # 获取包下的所有投标人
         bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()

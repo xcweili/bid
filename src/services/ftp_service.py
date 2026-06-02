@@ -2,6 +2,7 @@
 import os
 import ftplib
 import asyncio
+import time
 from pathlib import Path
 from typing import List, Dict, Optional, Callable
 from loguru import logger
@@ -183,6 +184,8 @@ class FTPService:
                     logger.info("FTP 连接已关闭")
                 except:
                     pass
+                # 等待文件句柄释放（Windows 文件锁延迟）
+                time.sleep(0.5)
         
         # 创建异步任务
         return loop.create_task(download_task())
@@ -272,6 +275,92 @@ class FTPService:
                 logger.info("FTP 连接已关闭")
             except:
                 pass
+
+    def download_batch(
+        self,
+        tasks: List[Dict],
+        on_task_complete: Optional[Callable[[str, Dict], None]] = None
+    ) -> List[Dict]:
+        """批量下载（一次连接，下载所有任务的文件）
+         
+        Args:
+            tasks: 任务列表，每个元素包含 {
+                "project_code": str,
+                "section_code": str,
+                "package_no": str,
+                "files": List[Dict]
+            }
+            on_task_complete: 每个任务完成后的回调，参数为 (task_key, result_dict)
+            
+        Returns:
+            每个任务的结果列表
+        """
+        results = []
+        ftp = None
+         
+        try:
+            ftp = self.connect()
+            logger.info("批量下载：FTP 连接成功")
+             
+            for task in tasks:
+                project_code = task['project_code']
+                section_code = task['section_code']
+                package_no = task['package_no']
+                files = task['files']
+                 
+                local_base_dir = self.base_dir / project_code / section_code / package_no
+                local_base_dir.mkdir(parents=True, exist_ok=True)
+                 
+                total_files = sum(len(f.get('file_path', [])) for f in files)
+                downloaded_count = 0
+                failed_files = []
+                 
+                for file_item in files:
+                    remote_paths = file_item.get('file_path', [])
+                    for remote_path in remote_paths:
+                        try:
+                            file_name = os.path.basename(remote_path)
+                            local_path = local_base_dir / file_name
+                            success = self.download_file(ftp, remote_path, local_path)
+                            if success:
+                                downloaded_count += 1
+                            else:
+                                failed_files.append(remote_path)
+                        except Exception as e:
+                            logger.error(f"批量下载文件异常：{remote_path} - {e}")
+                            failed_files.append(remote_path)
+                
+                result = {
+                    "project_code": project_code,
+                    "section_code": section_code,
+                    "package_no": package_no,
+                    "success": downloaded_count == total_files,
+                    "total": total_files,
+                    "downloaded": downloaded_count,
+                    "failed": failed_files,
+                    "local_dir": str(local_base_dir)
+                }
+                results.append(result)
+                 
+                if on_task_complete:
+                    try:
+                        on_task_complete(f"{project_code}/{section_code}/{package_no}", result)
+                    except Exception as e:
+                        logger.error(f"批量下载回调失败：{e}")
+                 
+                logger.info(f"批量下载任务完成：{project_code}/{section_code}/{package_no} - 成功 {downloaded_count}/{total_files}")
+             
+            return results
+        except Exception as e:
+            logger.error(f"批量下载失败：{e}")
+            return results
+        finally:
+            if ftp:
+                try:
+                    ftp.quit()
+                except:
+                    pass
+                time.sleep(0.5)
 
 
 # 全局 FTP 服务实例

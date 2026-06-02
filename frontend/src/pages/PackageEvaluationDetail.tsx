@@ -211,8 +211,8 @@ const PackageEvaluationDetail: React.FC = () => {
       setBidders(foundBidders);
 
       // 获取包的评审项配置
-      const items = await evaluationItemService.getPackageItems(parseInt(packageId || '0'));
-      setPackageItems(items);
+      const result = await evaluationItemService.getPackageItems(parseInt(packageId || '0'));
+      setPackageItems(result.items);
       
       // 获取转换状态
       fetchConversionStatus();
