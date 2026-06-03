@@ -41,10 +41,13 @@ class Config:
     JWT_EXPIRE_SECONDS = 1800  # 30 分钟无操作超时
     
     # FTP 配置（默认值用于本地测试）
-    FTP_HOST = os.getenv("FTP_HOST", "127.0.0.1")
+    SGBID_BID_FTP_ROOT_DIR = "/16269527"
+    SGBID_GK_FTP_ROOT_DIR = "/gk"
+    SGBID_TK_FTP_ROOT_DIR = "/tk"
+    FTP_HOST = os.getenv("FTP_HOST", "10.232.49.201")
     FTP_PORT = int(os.getenv("FTP_PORT", "21"))
-    FTP_USERNAME = os.getenv("FTP_USERNAME", "test")
-    FTP_PASSWORD = os.getenv("FTP_PASSWORD", "test123")
+    FTP_USERNAME = os.getenv("FTP_USERNAME", "ftp-xt")
+    FTP_PASSWORD = os.getenv("FTP_PASSWORD", "$urce_119")
     FTP_TIMEOUT = int(os.getenv("FTP_TIMEOUT", "30"))
     FTP_USE_PASSIVE = os.getenv("FTP_USE_PASSIVE", "true").lower() == "true"
     
