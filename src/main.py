@@ -94,6 +94,16 @@ async def health_check():
     return {"status": "healthy"}
 
 
+# 在前端静态文件存在时，作为 SPA 回退服务
+frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+    logger.info(f"前端静态文件已挂载: {frontend_dist}")
+else:
+    logger.info("未检测到前端静态文件，仅 API 模式运行")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8888)

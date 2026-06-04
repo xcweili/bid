@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Data & logs (db is auto-created on startup)
+src/data/
+src/logs/
+logs/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temp files
+temp/
+*.tmp
+*.tar
+
+# Environment
+.env
+.env.local
+
+# Large test data
+test_ftp_data_tmp/
+protocol_interfaces/
+rules/
+skills/
