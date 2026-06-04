@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
+﻿from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional, Any
 from loguru import logger
@@ -1761,17 +1762,24 @@ async def run_dify_evaluation(package_id: int):
         # ====== 统计结果 ======
         package = db.query(Package).filter(Package.id == package_id).first()
         total_items = len(package_items)
-        completed_items = db.query(EvaluationResult).filter(
-            EvaluationResult.package_id == package_id,
-            EvaluationResult.evaluation_status == "completed"
-        ).distinct(EvaluationResult.item_id).count()
+        expected_total = len(bidders) * total_items  # 公司 × 评审项 = 期望的总结果数
 
-        failed_items = db.query(EvaluationResult).filter(
+        actual_total = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id
+        ).count()
+
+        failed_count = db.query(EvaluationResult).filter(
             EvaluationResult.package_id == package_id,
             EvaluationResult.evaluation_status == "failed"
-        ).distinct(EvaluationResult.item_id).count()
+        ).count()
 
-        package.evaluation_status = "completed" if completed_items >= total_items else "failed"
+        completed_count = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.evaluation_status == "completed"
+        ).count()
+
+        # 所有 (公司×评审项) 都已执行完 → 包已完成（单个任务失败不影响包状态）
+        package.evaluation_status = "completed"
         db.commit()
 
         logger.info(f"[DIFY:{package_id}] === Dify 评审完成 ===")
@@ -1780,7 +1788,7 @@ async def run_dify_evaluation(package_id: int):
         logger.info(f"[DIFY:{package_id}] 包号: {package_no}")
         logger.info(f"[DIFY:{package_id}] 并发上限: {max_concurrency}")
         logger.info(f"[DIFY:{package_id}] 评审状态: {package.evaluation_status}")
-        logger.info(f"[DIFY:{package_id}] 评审项总数: {total_items}, 成功: {completed_items}, 失败: {failed_items}")
+        logger.info(f"[DIFY:{package_id}] 期望 {expected_total} 条，实际 {actual_total} 条，完成 {completed_count}，失败 {failed_count}")
 
         for bidder in bidders:
             total_score = db.query(EvaluationResult).filter(
@@ -1803,7 +1811,7 @@ async def run_dify_evaluation(package_id: int):
         try:
             pkg = db.query(Package).filter(Package.id == package_id).first()
             if pkg:
-                pkg.evaluation_status = "failed"
+                pkg.evaluation_status = "completed"
                 db.commit()
         except Exception as commit_e:
             logger.error(f"[DIFY:{package_id}] 更新状态失败: {commit_e}")
@@ -1826,6 +1834,72 @@ def _save_evaluation_failed(db, package_id, bidder_id, item_id, error_message="D
         db.commit()
     except Exception as e:
         logger.error(f"标记评审失败异常: {e}")
+
+
+@router.get("/evaluation-progress-summary")
+def get_all_packages_evaluation_progress():
+    """批量获取所有包的评审进度摘要（一次查询，避免 N+1 请求）"""
+    db = db_session()
+    try:
+        # 获取所有包及其关联的项目/标段信息
+        packages = db.query(Package).all()
+
+        # 获取所有评审项配置（package_id → 评审项数）
+        all_package_items = db.query(PackageItem).all()
+        items_count_map: Dict[int, int] = {}
+        for pi in all_package_items:
+            items_count_map[pi.package_id] = items_count_map.get(pi.package_id, 0) + 1
+
+        # 获取所有评审结果，一次性按 package_id + bidder_id 聚合
+        all_results = db.query(EvaluationResult).all()
+        
+        # 聚合结构: {package_id: {bidder_id: {completed: n, failed: n, total_score: float}}}
+        from collections import defaultdict
+        pkg_bidder_stats: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(lambda: defaultdict(lambda: {
+            "completed": 0, "failed": 0, "total_score": 0.0
+        }))
+        
+        for r in all_results:
+            stats = pkg_bidder_stats[r.package_id][r.bidder_id]
+            if r.evaluation_status == "completed":
+                stats["completed"] += 1
+                stats["total_score"] += (r.score or 0)
+            elif r.evaluation_status == "failed":
+                stats["failed"] += 1
+
+        # 构建返回结果
+        result = []
+        for package in packages:
+            bidder_list = db.query(Bidder).filter(Bidder.package_id == package.id).all()
+            total_items = items_count_map.get(package.id, 0)
+            bidder_stats = pkg_bidder_stats.get(package.id, {})
+
+            bidder_progress_list = []
+            for bidder in bidder_list:
+                stats = bidder_stats.get(bidder.id, {"completed": 0, "failed": 0, "total_score": 0.0})
+                progress_pct = round((stats["completed"] + stats["failed"]) / total_items * 100, 1) if total_items > 0 else 0
+                bidder_progress_list.append({
+                    "bidder_id": bidder.id,
+                    "company_name": bidder.company_name,
+                    "completed_items": stats["completed"],
+                    "failed_items": stats["failed"],
+                    "total_items": total_items,
+                    "progress_pct": progress_pct,
+                    "total_score": round(stats["total_score"], 2)
+                })
+
+            result.append({
+                "package_id": package.id,
+                "package_no": package.package_no,
+                "evaluation_status": package.evaluation_status or "pending",
+                "total_bidders": len(bidder_list),
+                "total_items": total_items,
+                "bidder_progress": bidder_progress_list
+            })
+
+        return result
+    finally:
+        db_session.remove()
 
 
 @router.get("/{package_id}/evaluation-progress")
@@ -1909,5 +1983,385 @@ def get_bidder_evaluation_detail(package_id: int, bidder_id: int):
             "company_name": bidder.company_name if bidder else "",
             "items": items_list
         }
+    finally:
+        db_session.remove()
+
+
+@router.post("/{package_id}/rerun-failed")
+async def rerun_failed_evaluations(package_id: int, background_tasks: BackgroundTasks):
+    """批量重跑包下所有失败的评审项
+    
+    找出所有 evaluation_status='failed' 的评审结果，重新调用 Dify 工作流进行评审。
+    """
+    db = db_session()
+    try:
+        package = db.query(Package).filter(Package.id == package_id).first()
+        if not package:
+            raise HTTPException(status_code=404, detail="包不存在")
+        
+        # 防止并发：如果正在评审中，不允许触发重跑
+        if package.evaluation_status == "evaluating":
+            raise HTTPException(
+                status_code=400,
+                detail="评审正在进行中，请等待当前评审完成后再重跑失败项"
+            )
+        
+        # 查找所有失败的评审结果
+        failed_results = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.evaluation_status == "failed"
+        ).all()
+        
+        if not failed_results:
+            raise HTTPException(status_code=400, detail="当前没有失败的评审项需要重跑")
+        
+        # 按 (bidder_id, item_id) 去重得到需要重跑的组合
+        rerun_items = []
+        seen = set()
+        for fr in failed_results:
+            key = (fr.bidder_id, fr.item_id)
+            if key not in seen:
+                seen.add(key)
+                rerun_items.append({
+                    "bidder_id": fr.bidder_id,
+                    "item_id": fr.item_id
+                })
+        
+        logger.info(f"[RERUN:{package_id}] 找到 {len(failed_results)} 条失败记录，去重后 {len(rerun_items)} 个需要重跑的组合")
+        
+        # 先清除旧的失败记录
+        db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.evaluation_status == "failed"
+        ).delete(synchronize_session=False)
+        db.commit()
+        logger.info(f"[RERUN:{package_id}] 已清除旧失败记录")
+        
+        # 更新包状态为 evaluating
+        package.evaluation_status = "evaluating"
+        db.commit()
+        
+        # 后台执行重跑
+        background_tasks.add_task(run_rerun_failed_evaluation, package_id, rerun_items)
+        
+        return {
+            "message": f"已开始重跑 {len(rerun_items)} 个失败评审项",
+            "rerun_count": len(rerun_items)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[RERUN:{package_id}] 启动重跑失败: {e}")
+        raise HTTPException(status_code=500, detail=f"重跑启动失败：{str(e)}")
+    finally:
+        db_session.remove()
+
+
+async def run_rerun_failed_evaluation(package_id: int, rerun_items: list):
+    """后台执行失败项重跑
+
+    并发模型与正常启动评审一致：
+    - 按评审项分组，所有评审项同时发起（asyncio.gather）
+    - 单个评审项内的多家公司，按包配置的 max_concurrency 控制并发上限
+
+    Args:
+        package_id: 包ID
+        rerun_items: 需要重跑的项列表，每项包含 bidder_id 和 item_id
+    """
+    db = db_session()
+    try:
+        package = db.query(Package).filter(Package.id == package_id).first()
+        if not package:
+            logger.error(f"[RERUN:{package_id}] 包不存在")
+            return
+
+        max_concurrency = package.max_concurrency or 1
+        src_dir = Path(__file__).parent.parent
+
+        logger.info(f"[RERUN:{package_id}] === 开始重跑失败评审项 ===")
+        logger.info(f"[RERUN:{package_id}] 待重跑项数: {len(rerun_items)}, 公司级并发上限: {max_concurrency}")
+
+        async def rerun_company_item(bidder_id: int, item_id: int, company_semaphore: asyncio.Semaphore):
+            """重跑单个 (投标人 × 评审项) 组合，受公司级信号量控制"""
+            async with company_semaphore:
+                db_local = SessionLocal()
+                try:
+                    bidder = db_local.query(Bidder).filter(Bidder.id == bidder_id).first()
+                    if not bidder:
+                        logger.warning(f"[RERUN:{package_id}] 投标人 {bidder_id} 不存在，跳过")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "投标人不存在")
+                        return
+
+                    item = db_local.query(EvaluationItem).filter(EvaluationItem.id == item_id).first()
+                    if not item:
+                        logger.warning(f"[RERUN:{package_id}] 评审项 {item_id} 不存在，跳过")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "评审项不存在")
+                        return
+
+                    api_key = item.api_key or config.DIFY_API_KEY
+                    base_url = item.base_url or config.DIFY_BASE_URL
+                    workflow_id = item.workflow_id
+
+                    if not api_key:
+                        logger.warning(f"[RERUN:{package_id}] 评审项 {item.item_name} 未配置 API Key")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "API Key 未配置")
+                        return
+
+                    logger.info(f"[RERUN:{package_id}] 重跑: 投标人={bidder.company_name}, 评审项={item.item_name}")
+
+                    bound_filenames = [f.file_name for f in item.files] if item.files else []
+
+                    # 查找匹配的 MD 文件
+                    md_files_query = db_local.query(BidderFile).filter(
+                        BidderFile.bidder_id == bidder_id,
+                        BidderFile.file_type == "md",
+                        BidderFile.parse_status == "completed"
+                    )
+
+                    if bound_filenames:
+                        import fnmatch
+                        matched_files = []
+                        for md_file in md_files_query.all():
+                            for bound_name in bound_filenames:
+                                pattern = bound_name if ('*' in bound_name or '?' in bound_name) else f"*{bound_name}*"
+                                if fnmatch.fnmatch(md_file.file_name, pattern):
+                                    matched_files.append(md_file)
+                                    break
+                        md_files = matched_files
+                    else:
+                        md_files = md_files_query.all()
+
+                    if not md_files:
+                        logger.warning(f"[RERUN:{package_id}] 投标人 {bidder.company_name} 无匹配文件")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "无匹配文件")
+                        return
+
+                    upload_file_ids = []
+                    for md_file in md_files:
+                        file_path = src_dir / "data" / "package_files" / f"pkg_{package_id}" / md_file.file_path
+                        if not file_path.exists():
+                            logger.warning(f"[RERUN:{package_id}] 文件不存在：{file_path}")
+                            continue
+                        file_info = await dify_service.upload_file(
+                            str(file_path), f"pkg_{package.package_no}", api_key, base_url
+                        )
+                        if file_info:
+                            upload_file_ids.append(file_info.get("id"))
+
+                    if not upload_file_ids:
+                        logger.warning(f"[RERUN:{package_id}] 投标人 {bidder.company_name} 文件上传全部失败")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "文件上传失败")
+                        return
+
+                    # 调用 Dify 工作流
+                    upload_files = [
+                        {"type": "document", "transfer_method": "local_file", "url": "", "upload_file_id": fid}
+                        for fid in upload_file_ids
+                    ]
+                    inputs = {"upload_files": upload_files, "input": bidder.company_name}
+
+                    result = await dify_service.run_workflow(
+                        inputs, f"pkg_{package.package_no}", workflow_id, "blocking", api_key, base_url
+                    )
+
+                    if not result:
+                        logger.error(f"[RERUN:{package_id}] 投标人 {bidder.company_name} × {item.item_name} 工作流执行失败")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "工作流执行失败")
+                        return
+
+                    data = result.get("data", {})
+                    outputs = data.get("outputs", {})
+                    run_id = result.get("workflow_run_id")
+                    status = data.get("status")
+                    elapsed_time = data.get("elapsed_time")
+                    total_tokens = data.get("total_tokens")
+
+                    logger.info(f"[RERUN:{package_id}] 工作流完成 - Run ID: {run_id}, 状态: {status}, 投标人: {bidder.company_name}, 评审项: {item.item_name}")
+
+                    if outputs:
+                        bidder_output = outputs.get("text") or {}
+                        parsed_result = parse_dify_result(bidder_output)
+
+                        result_record = EvaluationResult(
+                            package_id=package_id,
+                            bidder_id=bidder_id,
+                            item_id=item_id,
+                            score=parsed_result["score"],
+                            score_reason=parsed_result["reason"],
+                            evaluation_basis="",
+                            source_filename=parsed_result["source_filename"],
+                            source_page=parsed_result["source_page"],
+                            source_quote=parsed_result["source_quote"],
+                            evaluation_status="completed"
+                        )
+                        db_local.add(result_record)
+                        db_local.add(DifyWorkflowRun(
+                            package_id=package_id,
+                            bidder_id=bidder_id,
+                            file_id=0,
+                            dify_workflow_run_id=run_id,
+                            status=data.get("status", "completed"),
+                            outputs=json.dumps(outputs, ensure_ascii=False) if outputs else None,
+                            error=data.get("error"),
+                            elapsed_time=elapsed_time,
+                            total_tokens=total_tokens,
+                            total_steps=data.get("total_steps"),
+                            finished_at=datetime.now()
+                        ))
+                        db_local.commit()
+                        logger.info(f"[RERUN:{package_id}] 投标人 {bidder.company_name} × {item.item_name} 重跑成功，得分: {parsed_result['score']}")
+                    else:
+                        logger.warning(f"[RERUN:{package_id}] 投标人 {bidder.company_name} × {item.item_name} 工作流返回无输出")
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, "工作流无输出")
+
+                except Exception as e:
+                    logger.error(f"[RERUN:{package_id}] 重跑异常: 投标人 {bidder_id} × 评审项 {item_id}: {e}")
+                    logger.error(f"[RERUN:{package_id}] 异常详情: {traceback.format_exc()}")
+                    try:
+                        _save_evaluation_failed(db_local, package_id, bidder_id, item_id, str(e))
+                    except:
+                        pass
+                finally:
+                    db_local.close()
+
+        async def rerun_item_group(item_id: int, bidder_ids: list):
+            """单个评审项下所有公司的重跑（受公司级信号量控制）"""
+            company_semaphore = asyncio.Semaphore(max_concurrency)
+            tasks = [
+                rerun_company_item(bidder_id, item_id, company_semaphore)
+                for bidder_id in bidder_ids
+            ]
+            await asyncio.gather(*tasks)
+
+        # ====== 按评审项分组 ======
+        from collections import defaultdict
+        item_groups = defaultdict(list)
+        for ri in rerun_items:
+            item_groups[ri["item_id"]].append(ri["bidder_id"])
+
+        logger.info(f"[RERUN:{package_id}] 按评审项分组并发 - {len(item_groups)} 个评审项同时发起，单个评审项内公司并发上限: {max_concurrency}")
+        for item_id, bidder_ids in item_groups.items():
+            logger.info(f"[RERUN:{package_id}]   评审项 {item_id}: {len(bidder_ids)} 家公司")
+
+        item_tasks = [
+            rerun_item_group(item_id, bidder_ids)
+            for item_id, bidder_ids in item_groups.items()
+        ]
+        await asyncio.gather(*item_tasks)
+
+        # ====== 更新包状态 ======
+        db = db_session()
+        try:
+            package = db.query(Package).filter(Package.id == package_id).first()
+            if package:
+                bidders = db.query(Bidder).filter(Bidder.package_id == package_id).all()
+                package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
+                expected_total = len(bidders) * len(package_items)
+
+                actual_total = db.query(EvaluationResult).filter(
+                    EvaluationResult.package_id == package_id
+                ).count()
+
+                failed_count = db.query(EvaluationResult).filter(
+                    EvaluationResult.package_id == package_id,
+                    EvaluationResult.evaluation_status == "failed"
+                ).count()
+
+                completed_count = db.query(EvaluationResult).filter(
+                    EvaluationResult.package_id == package_id,
+                    EvaluationResult.evaluation_status == "completed"
+                ).count()
+
+                package.evaluation_status = "completed"
+                db.commit()
+
+                logger.info(f"[RERUN:{package_id}] === 重跑完成 ===")
+                logger.info(f"[RERUN:{package_id}] 期望 {expected_total} 条，实际 {actual_total} 条，完成 {completed_count}，失败 {failed_count}")
+                logger.info(f"[RERUN:{package_id}] 最终状态: {package.evaluation_status}")
+        finally:
+            db_session.remove()
+
+    except Exception as e:
+        logger.error(f"[RERUN:{package_id}] === 重跑异常 ===")
+        logger.error(f"[RERUN:{package_id}] 异常信息: {e}")
+        logger.error(f"[RERUN:{package_id}] 异常详情: {traceback.format_exc()}")
+        try:
+            db2 = db_session()
+            pkg = db2.query(Package).filter(Package.id == package_id).first()
+            if pkg:
+                pkg.evaluation_status = "completed"
+                db2.commit()
+            db_session.remove()
+        except:
+            pass
+    finally:
+        db_session.remove()
+
+
+class RerunItemRequest(BaseModel):
+    bidder_id: int
+    item_id: int
+
+
+@router.post("/{package_id}/rerun-item")
+async def rerun_single_item(
+    package_id: int,
+    request: RerunItemRequest,
+    background_tasks: BackgroundTasks
+):
+    """重跑单个评审项 (投标人 × 评审项) - 支持任意状态的评审结果
+
+    删除该组合的旧记录（无论状态），重新调用 Dify 工作流。
+    """
+    db = db_session()
+    try:
+        package = db.query(Package).filter(Package.id == package_id).first()
+        if not package:
+            raise HTTPException(status_code=404, detail="包不存在")
+
+        if package.evaluation_status == "evaluating":
+            raise HTTPException(
+                status_code=400,
+                detail="评审正在进行中，请等待当前评审完成后再重跑"
+            )
+
+        # 删除该组合的旧记录（不限状态）
+        deleted_count = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id,
+            EvaluationResult.bidder_id == request.bidder_id,
+            EvaluationResult.item_id == request.item_id,
+        ).delete(synchronize_session=False)
+
+        if deleted_count == 0:
+            raise HTTPException(status_code=400, detail="未找到该组合的评审记录")
+
+        db.query(DifyWorkflowRun).filter(
+            DifyWorkflowRun.package_id == package_id,
+            DifyWorkflowRun.bidder_id == request.bidder_id,
+        ).filter(
+            DifyWorkflowRun.file_id == 0
+        ).delete(synchronize_session=False)
+
+        package.evaluation_status = "evaluating"
+        db.commit()
+        logger.info(f"[RERUN:{package_id}] 单个重跑: bidder={request.bidder_id}, item={request.item_id}")
+
+        rerun_items = [{"bidder_id": request.bidder_id, "item_id": request.item_id}]
+        background_tasks.add_task(run_rerun_failed_evaluation, package_id, rerun_items)
+
+        bidder = db.query(Bidder).filter(Bidder.id == request.bidder_id).first()
+        item = db.query(EvaluationItem).filter(EvaluationItem.id == request.item_id).first()
+
+        return {
+            "message": f"已开始重跑：{bidder.company_name if bidder else '未知'} × {item.item_name if item else '未知'}",
+            "rerun_count": 1
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[RERUN:{package_id}] 单个重跑失败: {e}")
+        raise HTTPException(status_code=500, detail=f"重跑失败：{str(e)}")
     finally:
         db_session.remove()

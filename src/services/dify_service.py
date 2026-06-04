@@ -51,7 +51,7 @@ class DifyService:
         headers = self._get_headers(api_key)
         
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 with open(file_path, "rb") as f:
                     files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
                     data = {"user": user}
@@ -127,7 +127,7 @@ class DifyService:
             logger.info(f"使用不带 workflow_id 的调用方式: {url}")
 
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            async with httpx.AsyncClient(timeout=90.0) as client:
                 response = await client.post(
                     url,
                     headers=headers,

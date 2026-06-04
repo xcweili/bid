@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   Card, Typography, Tag, Button, Space, message,
-  Table, Empty, Progress, Spin, Divider, Select, Input, Pagination
+  Table, Empty, Progress, Spin, Divider, Select, Input, Pagination,
+  Popconfirm, Tooltip
 } from 'antd';
 import {
   RestOutlined,
   CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
   FolderOpenOutlined, InboxOutlined, RightOutlined,
-  ClockCircleOutlined, ArrowUpOutlined, FilterOutlined, BarChartOutlined
+  ClockCircleOutlined, ArrowUpOutlined, FilterOutlined, BarChartOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import PageHeader from '../components/PageHeader';
 
@@ -57,6 +59,8 @@ interface BidderItemDetail {
   id: number;
   item_code: string;
   item_name: string;
+  bidder_id: number;
+  item_id: number;
   score: number;
   score_reason: string;
   evaluation_basis: string;
@@ -105,26 +109,24 @@ const EvaluationResults: React.FC = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/projects');
-      const data: Project[] = await res.json();
+      const [projectsRes, progressRes] = await Promise.all([
+        fetch('/api/projects'),
+        fetch('/api/packages/evaluation-progress-summary')
+      ]);
+
+      const data: Project[] = await projectsRes.json();
       setProjects(data);
 
-      const pkgIds: number[] = [];
-      data.forEach(proj => proj.sections.forEach(sec => sec.packages.forEach(pkg => pkgIds.push(pkg.id))));
-      setTotalPackages(pkgIds.length);
+      let totalCount = 0;
+      data.forEach(proj => proj.sections.forEach(sec => sec.packages.forEach(() => totalCount++)));
+      setTotalPackages(totalCount);
 
-      const newProgressMap: Record<number, EvaluationProgress> = {};
-      await Promise.all(pkgIds.map(async (pid) => {
-        try {
-          const pr = await fetch(`/api/packages/${pid}/evaluation-progress`);
-          if (pr.ok) {
-            const progress = await pr.json();
-            // 始终存储进度信息，即使没有评审结果，以便显示正确的评审状态
-            newProgressMap[pid] = progress;
-          }
-        } catch { /* ignore */ }
-      }));
-      setProgressMap(newProgressMap);
+      if (progressRes.ok) {
+        const allProgress: EvaluationProgress[] = await progressRes.json();
+        const newProgressMap: Record<number, EvaluationProgress> = {};
+        allProgress.forEach(p => { newProgressMap[p.package_id] = p; });
+        setProgressMap(newProgressMap);
+      }
     } catch {
       message.error('获取数据失败');
     } finally {
@@ -137,6 +139,23 @@ const EvaluationResults: React.FC = () => {
     if (!prog) return <Tag color="default" icon={<ClockCircleOutlined />}>未开始</Tag>;
     const cfg = getEvalStatusConfig(prog.evaluation_status);
     return <Tag color={cfg.color} icon={cfg.icon as any}>{cfg.text}</Tag>;
+  };
+
+  const [refreshingPkgId, setRefreshingPkgId] = useState<number | null>(null);
+
+  const refreshPackageProgress = async (pkgId: number) => {
+    setRefreshingPkgId(pkgId);
+    try {
+      const pr = await fetch(`/api/packages/${pkgId}/evaluation-progress`);
+      if (pr.ok) {
+        const progress = await pr.json();
+        setProgressMap(prev => ({ ...prev, [pkgId]: progress }));
+      }
+    } catch {
+      message.error('刷新状态失败');
+    } finally {
+      setRefreshingPkgId(null);
+    }
   };
 
   const hasProgressData = (pkgId: number) => {
@@ -392,10 +411,25 @@ const EvaluationResults: React.FC = () => {
                             )
                           },
                           {
-                            title: '评审状态', key: 'status', width: 120,
+                            title: '评审状态', key: 'status', width: 150,
                             render: (_: any, record: PackageSummary) => {
                               const tag = getPackageStatusTag(record.id);
-                              return <div style={{ padding: '4px 0' }}>{tag}</div>;
+                              const prog = progressMap[record.id];
+                              const isRefreshing = refreshingPkgId === record.id;
+                              return (
+                                <Space size={4}>
+                                  <div style={{ padding: '4px 0' }}>{tag}</div>
+                                  {prog && (
+                                    <Button
+                                      type="text"
+                                      size="small"
+                                      icon={<ReloadOutlined spin={isRefreshing} />}
+                                      loading={isRefreshing}
+                                      onClick={() => refreshPackageProgress(record.id)}
+                                    />
+                                  )}
+                                </Space>
+                              );
                             }
                           },
                           {
@@ -465,6 +499,7 @@ const EvaluationResults: React.FC = () => {
                             pkg={groupedSection.section.packages.find(p => p.id === expandedPkgId)!}
                             progress={progressMap[expandedPkgId]}
                             pkgId={expandedPkgId!}
+                            refreshProgress={refreshPackageProgress}
                           />
                         </Card>
                       )}
@@ -502,12 +537,18 @@ const EvalPackageDetail: React.FC<{
   pkg: PackageSummary;
   progress?: EvaluationProgress;
   pkgId: number;
-}> = ({ pkg, progress, pkgId }) => {
+  refreshProgress: (pkgId: number) => Promise<void>;
+}> = ({ pkg, progress, pkgId, refreshProgress }) => {
   const [expandedBidderId, setExpandedBidderId] = useState<number | null>(null);
   const [bidderDetailMap, setBidderDetailMap] = useState<Record<number, BidderItemDetail[]>>({});
   const [detailLoadingMap, setDetailLoadingMap] = useState<Record<number, boolean>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [rerunning, setRerunning] = useState(false);
+
+  // 用 ref 追踪当前展开的投标人，避免 setTimeout 中的闭包过期问题
+  const expandedBidderRef = React.useRef<number | null>(null);
+  React.useEffect(() => { expandedBidderRef.current = expandedBidderId; }, [expandedBidderId]);
 
   if (!progress) {
     return (
@@ -525,8 +566,8 @@ const EvalPackageDetail: React.FC<{
     );
   }
 
-  const loadBidderDetail = async (bidderId: number) => {
-    if (bidderDetailMap[bidderId]) return;
+  const loadBidderDetail = async (bidderId: number, forceRefresh: boolean = false) => {
+    if (!forceRefresh && bidderDetailMap[bidderId]) return;
     setDetailLoadingMap(prev => ({ ...prev, [bidderId]: true }));
     try {
       const res = await fetch(`/api/packages/${pkgId}/evaluation-detail/${bidderId}`);
@@ -541,10 +582,80 @@ const EvalPackageDetail: React.FC<{
     }
   };
 
+  // 当 progress 数据变化时，自动清除详情缓存并重新拉取当前展开的投标人数据
+  const prevProgressFingerprint = React.useRef<string>('');
+  React.useEffect(() => {
+    const fingerprint = JSON.stringify(progress?.bidder_progress?.map(b =>
+      `${b.bidder_id}:${b.completed_items}:${b.failed_items}:${b.total_score}`
+    ) || []);
+    if (prevProgressFingerprint.current && prevProgressFingerprint.current !== fingerprint) {
+      setBidderDetailMap({});
+      if (expandedBidderRef.current) {
+        loadBidderDetail(expandedBidderRef.current, true);
+      }
+    }
+    prevProgressFingerprint.current = fingerprint;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
+
   const handleExpand = (expanded: boolean, record: BidderProgress) => {
     setExpandedBidderId(expanded ? record.bidder_id : null);
     if (expanded) {
       loadBidderDetail(record.bidder_id);
+    }
+  };
+
+  const handleRerunFailed = async () => {
+    setRerunning(true);
+    try {
+      const res = await fetch(`/api/packages/${pkgId}/rerun-failed`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        message.success(data.message || '已开始重跑失败项');
+        setTimeout(async () => {
+          setRerunning(false);
+          await refreshProgress(pkgId);
+        }, 1500);
+      } else {
+        message.error(data.detail || '重跑失败');
+        setRerunning(false);
+      }
+    } catch {
+      message.error('重跑请求失败');
+      setRerunning(false);
+    }
+  };
+
+  // 计算是否有失败项
+  const hasFailedItems = progress.bidder_progress.some(b => b.failed_items > 0);
+  const totalFailedItems = progress.bidder_progress.reduce((sum, b) => sum + b.failed_items, 0);
+
+  const [singleRerunningMap, setSingleRerunningMap] = useState<Record<number, boolean>>({});
+
+  const handleRerunSingleItem = async (bidderId: number, itemId: number, resultId: number) => {
+    setSingleRerunningMap(prev => ({ ...prev, [resultId]: true }));
+    try {
+      const res = await fetch(`/api/packages/${pkgId}/rerun-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bidder_id: bidderId, item_id: itemId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        message.success(data.message || '已开始重跑');
+        setTimeout(async () => {
+          setSingleRerunningMap(prev => ({ ...prev, [resultId]: false }));
+          await refreshProgress(pkgId);
+        }, 1500);
+      } else {
+        message.error(data.detail || '重跑失败');
+        setSingleRerunningMap(prev => ({ ...prev, [resultId]: false }));
+      }
+    } catch {
+      message.error('重跑请求失败');
+      setSingleRerunningMap(prev => ({ ...prev, [resultId]: false }));
     }
   };
 
@@ -556,6 +667,30 @@ const EvalPackageDetail: React.FC<{
           <Tag color="blue" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_items} 项</Tag>
           <span style={{ color: '#595959' }}>投标人总数：</span>
           <Tag color="green" style={{ fontSize: 13, padding: '4px 12px' }}>{progress.total_bidders} 家</Tag>
+          {hasFailedItems && (
+            <>
+              <span style={{ color: '#ff4d4f' }}>失败项：</span>
+              <Tag color="red" style={{ fontSize: 13, padding: '4px 12px' }}>{totalFailedItems} 项</Tag>
+              <Popconfirm
+                title="重跑失败项"
+                description={`确定要重跑 ${totalFailedItems} 个失败的评审项吗？将带上基本信息重新调用 Dify 工作流。`}
+                onConfirm={handleRerunFailed}
+                okText="确定"
+                cancelText="取消"
+              >
+                <Button
+                  type="primary"
+                  danger
+                  size="small"
+                  icon={<ReloadOutlined spin={rerunning} />}
+                  loading={rerunning}
+                  disabled={rerunning}
+                >
+                  {rerunning ? '重跑中...' : `重跑全部失败项 (${totalFailedItems})`}
+                </Button>
+              </Popconfirm>
+            </>
+          )}
         </Space>
       </div>
 
@@ -661,6 +796,32 @@ const EvalPackageDetail: React.FC<{
                           {t || '-'}
                         </Text>
                       )
+                    },
+                    {
+                      title: '操作', key: 'action', width: 100, fixed: 'right',
+                      render: (_: any, record: BidderItemDetail) => {
+                        const isRerunning = singleRerunningMap[record.id];
+                        return (
+                          <Popconfirm
+                            title="重跑该项"
+                            description="确定要重新评审该项吗？将删除旧结果并重新调用 Dify 工作流。"
+                            onConfirm={() => handleRerunSingleItem(record.bidder_id, record.item_id, record.id)}
+                            okText="确定"
+                            cancelText="取消"
+                          >
+                          <Tooltip title="重跑该项">
+                            <Button
+                              size="small"
+                              type="text"
+                              danger
+                              icon={<ReloadOutlined spin={isRerunning} />}
+                              loading={isRerunning}
+                              disabled={isRerunning}
+                            />
+                          </Tooltip>
+                          </Popconfirm>
+                        );
+                      }
                     }
                   ]}
                 />

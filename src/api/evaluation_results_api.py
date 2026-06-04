@@ -208,9 +208,6 @@ async def get_package_evaluation_progress(package_id: int, db: Session = Depends
     total_items = db.query(PackageItem).filter_by(package_id=package_id).count()
     
     bidder_progress = []
-    completed_count = 0
-    evaluating_count = 0
-    failed_count = 0
     
     for bidder in bidders:
         # 获取该投标人的评审结果
@@ -240,42 +237,22 @@ async def get_package_evaluation_progress(package_id: int, db: Session = Depends
             "total_score": total_score,
             "progress_pct": progress_pct
         })
-        
-        # 更新状态计数
-        if completed_items == total_items and failed_items == 0:
-            # 全部完成且没有失败
-            completed_count += 1
-        elif failed_items > 0:
-            # 有失败项
-            failed_count += 1
-        elif completed_items > 0 or len(results) > 0:
-            # 有部分完成或有评审记录
-            evaluating_count += 1
     
-    # 确定整体评审状态
-    # 优先使用后台设置的状态，只有在特定情况下才重新判断
+    # 包只有三种状态：pending / evaluating / completed
+    # 如果包是 evaluating 但所有公司×评审项都有结果了 → 及时更新为 completed
     if package.evaluation_status == "evaluating":
-        # 如果包状态是 evaluating，检查是否有评审结果
-        if completed_count == len(bidders) and len(bidders) > 0:
-            # 所有公司都完成了，更新为 completed
+        package_items = db.query(PackageItem).filter(PackageItem.package_id == package_id).all()
+        expected_total = len(bidders) * len(package_items)
+        actual_total = db.query(EvaluationResult).filter(
+            EvaluationResult.package_id == package_id
+        ).count()
+        
+        if actual_total >= expected_total:
             evaluation_status = "completed"
-            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 completed (所有公司完成)")
-        elif failed_count > 0:
-            # 有失败的公司，更新为 failed
-            evaluation_status = "failed"
-            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 failed ({failed_count} 家公司失败)")
-        elif evaluating_count > 0 or completed_count > 0:
-            # 有进行中的评审或部分完成，保持 evaluating
-            evaluation_status = "evaluating"
-            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (进行中)")
         else:
-            # 还没有任何评审结果，刚启动
             evaluation_status = "evaluating"
-            # logger.info(f"[EVAL_PROGRESS]   -> 设置状态为 evaluating (刚启动)")
     else:
-        # 其他状态直接使用后台设置的值
         evaluation_status = package.evaluation_status
-        # logger.info(f"[EVAL_PROGRESS]   -> 使用后台状态: {evaluation_status}")
     
     return {
         "package_id": package_id,
