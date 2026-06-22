@@ -78,15 +78,6 @@ app.include_router(bidders_api.router, prefix="/api", tags=["投标人管理"])
 app.include_router(package_files_api.router, tags=["包文件管理"])
 
 
-@app.get("/")
-async def root():
-    """首页"""
-    return {
-        "message": "招标评审平台 API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
-
 
 @app.get("/health")
 async def health_check():

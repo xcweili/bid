@@ -1,0 +1,56 @@
+# =========================================================
+# Dockerfile.arm64 - 华为昇腾 openEuler (鲲鹏 ARM64) 专用
+# =========================================================
+# 构建命令（在 x86 机器上交叉编译）:
+#   docker buildx build --platform linux/arm64 -t bid-evaluation:arm64 -f Dockerfile.arm64 --load .
+#
+# 构建命令（直接在 ARM64 机器上构建）:
+#   docker build -t bid-evaluation:arm64 -f Dockerfile.arm64 .
+# =========================================================
+
+# Stage 1: 构建前端静态文件
+# =========================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npx vite build
+
+# =========================================================
+# Stage 2: Python 运行环境（含前端 + 后端）
+# =========================================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 安装系统级依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Python 依赖
+COPY requirements.txt .
+RUN pip install --no-cache-dir --timeout 120 -r requirements.txt \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 复制后端源码
+COPY src/ ./src/
+
+# 复制数据库文件
+COPY bid_evaluation.db ./
+
+# 从 Stage 1 复制构建好的前端静态文件
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# 确保 data 和 logs 目录存在
+RUN mkdir -p /app/src/data /app/src/logs
+
+EXPOSE 8101
+
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8101"]

@@ -83,3 +83,4 @@ skills/
 .md
 .zip
 git_push.py
+*.tar
